@@ -74,18 +74,22 @@ function App() {
     setLoading(true);
     if (!customInstruction) setOutput('');
 
-    try {
-      const response = await fetch('const response = await fetch('https://ai-saas-generator-d3g8.onrender.com/api/generate', {', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: activePrompt,
-          persona: persona,
-          aiTone: aiTone
-        })
-      });
+    
+
+
+          try {
+        const response = await fetch('https://ai-saas-generator-d3g8.onrender.com/api/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: activePrompt,
+            persona: persona,
+            aiTone: aiTone
+          })
+        });
+
 
       const data = await response.json();
 
