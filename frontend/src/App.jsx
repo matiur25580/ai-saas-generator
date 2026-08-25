@@ -75,7 +75,7 @@ function App() {
     if (!customInstruction) setOutput('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/generate', {
+      const response = await fetch('const response = await fetch('https://ai-saas-generator-d3g8.onrender.com/api/generate', {', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
