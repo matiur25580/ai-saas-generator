@@ -52,8 +52,8 @@ app.post('/api/generate', async (req, res) => {
     // Save generated prompt and response permanently to MongoDB
     const newContent = new Content({
       prompt,
-      persona: selectedPersona,
-      aiTone: selectedTone,
+      persona: selectedPersona || 'General',
+      tone: selectedTone || 'Professional',
       response: aiResult
     });
 
@@ -63,7 +63,7 @@ app.post('/api/generate', async (req, res) => {
     res.json({ success: true, result: aiResult });
   } catch (error) {
     console.error('Error saving to database:', error);
-    res.status(500).json({ error: 'Failed to save data to database' });
+    res.json({ success: true, result: aiResult }); // DB fail holeo result dao
   }
 });
 
