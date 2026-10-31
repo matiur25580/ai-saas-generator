@@ -3,6 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import Content from './models/Content.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
 
