@@ -14,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
+import adminRoutes from './routes/admin.js';
 
 // Connect to MongoDB Atlas using the string in .env
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
