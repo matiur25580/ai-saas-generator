@@ -43,15 +43,26 @@ app.post('/api/generate', async (req, res) => {
     return res.status(400).json({ error: 'Prompt is required' });
   }
 
-  // Simulated AI Response Processing
   const selectedPersona = persona || 'Expert Copywriter';
   const selectedTone = aiTone || 'Professional';
+  let aiResult = "";
+  try {
+    if (process.env.GEMINI_API_KEY) {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const fullPrompt = `You are ${selectedPersona} with ${selectedTone} tone. Task: ${prompt}. Give detailed practical answer 150-300 words.`;
+      const result = await model.generateContent(fullPrompt);
+      aiResult = result.response.text();
+      console.log("🤖 Real Gemini AI used");
+    }
+  } catch(e){ console.log("⚠️ Gemini error:", e.message); }
+  if (!aiResult) {
+    aiResult = `[AI] ${selectedPersona} (${selectedTone}):
 
-  let aiResult = `[Database & Backend Processed] Generated content by ${selectedPersona} with ${selectedTone} tone:\n\n`;
-  aiResult += `"${prompt}"\n\n`;
-  aiResult += `1. Core Strategy: Stored permanently in MongoDB Atlas.\n`;
-  aiResult += `2. Execution: Managed via Node.js/Express backend.\n`;
-  aiResult += `3. Conclusion: Ready for full-stack production.`;
+${prompt}
+
+(Real AI unavailable)`;
+  }
 
   try {
     // Save generated prompt and response permanently to MongoDB
