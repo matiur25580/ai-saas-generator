@@ -244,31 +244,36 @@ function App() {
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
   };
 
-  const handleAuthSubmit = (e) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
     let hasError = false;
     if (!email.trim()) { setEmailError('Please enter email'); hasError = true; } else setEmailError('');
     if (!password.trim()) { setPasswordError('Please enter password'); hasError = true; } else setPasswordError('');
     if (hasError) return;
-
-    const existingUsers = JSON.parse(localStorage.getItem('savedUsers')) || {};
-    if (!isLoginMode) {
-      if (existingUsers[email]) { setEmailError('Email already registered!'); return; }
-      existingUsers[email] = password;
-      localStorage.setItem('savedUsers', JSON.stringify(existingUsers));
-      alert('Successfully registered! Please login.');
-      setIsLoginMode(true);
-    } else {
-      if (!existingUsers[email] || existingUsers[email] !== password) {
-        setPasswordError('Invalid email or password!');
+    const backend = import.meta.env.VITE_BACKEND_URL || 'https://ai-saas-generator-d3g8.onrender.com';
+    try {
+      const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+      const res = await fetch(`${backend}${endpoint}`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(isLoginMode ? {email, password} : {name: email.split('@')[0], email, password})
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setPasswordError(data.error || 'Failed');
         return;
       }
-      localStorage.setItem('loggedInUser', email);
-      setUser(email);
-      setCredits(15);
+      if (!isLoginMode) {
+        alert('✅ Registered! Please login.');
+        setIsLoginMode(true); return;
+      }
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('loggedInUser', data.user.email);
+      setUser(data.user.email);
+      setCredits(data.user.credits);
       setShowAuthModal(false);
-      alert('Successfully logged in!');
-    }
+      alert('✅ Logged in! Token saved.');
+    } catch(err){ setPasswordError('Backend connection failed'); }
   };
 
   const handleSettingsSubmit = (e) => {
