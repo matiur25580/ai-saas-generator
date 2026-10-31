@@ -49,11 +49,19 @@ app.post('/api/generate', async (req, res) => {
   try {
     if (process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash", generationConfig: { maxOutputTokens: 500, temperature: 0.7 } });
+      const modelsToTry = ["gemini-3.8-flash", "gemini-2.5-flash"];
       const fullPrompt = `You are ${selectedPersona} with ${selectedTone} tone. Task: ${prompt}. Give detailed practical answer 150-300 words.`;
-      const result = await model.generateContent(fullPrompt);
-      aiResult = result.response.text();
-      console.log("🤖 Real Gemini AI used");
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 500, temperature: 0.7 } });
+          const result = await model.generateContent(fullPrompt);
+          aiResult = result.response.text();
+          console.log("🤖 Real Gemini AI used:", modelName);
+          break;
+        } catch (inner) {
+          console.log("⚠️ Model failed, trying next:", modelName, "-", String(inner.message).slice(0, 100));
+        }
+      }
     }
   } catch(e){ console.log("⚠️ Gemini error:", e.message); }
   if (!aiResult) {
