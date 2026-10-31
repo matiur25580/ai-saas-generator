@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import Landing from './pages/Landing';
 import Admin from './pages/Admin';
+import AuthModal from './components/AuthModal';
 
 function App() {
   const [showLanding, setShowLanding] = useState(true);
@@ -244,37 +245,6 @@ function App() {
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
   };
 
-  const handleAuthSubmit = async (e) => {
-    e.preventDefault();
-    let hasError = false;
-    if (!email.trim()) { setEmailError('Please enter email'); hasError = true; } else setEmailError('');
-    if (!password.trim()) { setPasswordError('Please enter password'); hasError = true; } else setPasswordError('');
-    if (hasError) return;
-    const backend = import.meta.env.VITE_BACKEND_URL || 'https://ai-saas-generator-d3g8.onrender.com';
-    try {
-      const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
-      const res = await fetch(`${backend}${endpoint}`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(isLoginMode ? {email, password} : {name: email.split('@')[0], email, password})
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setPasswordError(data.error || 'Failed');
-        return;
-      }
-      if (!isLoginMode) {
-        alert('✅ Registered! Please login.');
-        setIsLoginMode(true); return;
-      }
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('loggedInUser', data.user.email);
-      setUser(data.user.email);
-      setCredits(data.user.credits);
-      setShowAuthModal(false);
-      alert('✅ Logged in! Token saved.');
-    } catch(err){ setPasswordError('Backend connection failed'); }
-  };
 
   const handleSettingsSubmit = (e) => {
     e.preventDefault();
@@ -512,27 +482,17 @@ function App() {
 
       {/* Auth Modal */}
       {showAuthModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '15px' }}>
-          <div style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px' }}>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>{isLoginMode ? 'Login' : 'Sign Up'}</h3>
-            <form onSubmit={handleAuthSubmit}>
-              <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', background: themeStyles.inputBg, color: themeStyles.inputColor, border: `1px solid ${themeStyles.border}`, borderRadius: '6px', boxSizing: 'border-box', fontSize: '13px', marginBottom: '10px' }} />
-              {emailError && <span style={{ color: '#ef4444', fontSize: '11px', display: 'block', marginBottom: '8px' }}>{emailError}</span>}
-              
-              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '10px', background: themeStyles.inputBg, color: themeStyles.inputColor, border: `1px solid ${themeStyles.border}`, borderRadius: '6px', boxSizing: 'border-box', fontSize: '13px', marginBottom: '10px' }} />
-              {passwordError && <span style={{ color: '#ef4444', fontSize: '11px', display: 'block', marginBottom: '8px' }}>{passwordError}</span>}
-              
-              <span onClick={() => setIsLoginMode(!isLoginMode)} style={{ fontSize: '11px', color: '#38bdf8', cursor: 'pointer', display: 'block', marginBottom: '15px', textDecoration: 'underline' }}>
-                {isLoginMode ? "Don't have an account? Sign Up" : "Already have an account? Login"}
-              </span>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" onClick={() => setShowAuthModal(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>{isLoginMode ? 'Login' : 'Sign Up'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AuthModal
+          themeStyles={themeStyles}
+          onClose={() => setShowAuthModal(false)}
+          onLogin={(u, token) => {
+            localStorage.setItem('token', token);
+            localStorage.setItem('loggedInUser', u.email);
+            setUser(u.email);
+            setCredits(u.credits);
+            setShowAuthModal(false);
+          }}
+        />
       )}
 
     </div>
