@@ -1,11 +1,6 @@
-import mongoose from 'mongoose';
-
-const contentSchema = new mongoose.Schema({
-  prompt: { type: String, required: true },
-  persona: { type: String },
-  aiTone: { type: String },
-  response: { type: String, required: true },
-  createdAt: { type: String, default: () => new Date().toLocaleString() }
-});
-
-export default mongoose.model('Content', contentSchema);
+const mongoose = require('mongoose');
+module.exports = mongoose.model('Content', new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  prompt: String, response: String, persona: String, tone: String,
+  bookmarked: { type: Boolean, default: false }
+}, { timestamps: true }));

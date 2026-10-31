@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+const authRoutes = require('./routes/auth');
+const contentRoutes = require('./routes/content');
 
 // Connect to MongoDB Atlas using the string in .env
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
