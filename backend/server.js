@@ -3,6 +3,8 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import Content from './models/Content.js';
+import authRoutes from './routes/auth.js';
+import contentRoutes from './routes/content.js';
 
 dotenv.config();
 
@@ -15,8 +17,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/admin', adminRoutes);
-import authRoutes from './routes/auth.js';
-import contentRoutes from './routes/content.js';
+X
 import adminRoutes from './routes/admin.js';
 
 // Connect to MongoDB Atlas using the string in .env
