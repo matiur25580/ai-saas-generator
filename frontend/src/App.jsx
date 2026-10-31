@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import Landing from './pages/Landing';
 
 function App() {
+  const [showLanding, setShowLanding] = useState(true);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [prompt, setPrompt] = useState('');
   const [persona, setPersona] = useState('');
@@ -276,6 +278,8 @@ function App() {
 
   const totalHistoryCount = history.length;
   const totalBookmarkCount = history.filter(item => item.bookmarked).length;
+
+  if (showLanding) return <Landing onGetStarted={()=>setShowLanding(false)} />;
 
   return (
     <div style={{ background: themeStyles.appBg, minHeight: '100vh', color: themeStyles.textColor, padding: '15px', fontFamily: 'sans-serif', transition: 'all 0.3s ease' }}>
