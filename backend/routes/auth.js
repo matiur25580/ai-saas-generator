@@ -26,8 +26,8 @@ router.post('/send-otp', async (req, res) => {
     } while (oldRec && oldRec.otp === otp && tries < 5);
     await Otp.deleteMany({ email, purpose });
     await Otp.create({ email, otp, purpose });
-    const emailSent = await sendOtpEmail(email, otp, purpose, name);
-    res.json({ success: true, message: 'OTP generated', emailSent });
+    res.json({ success: true, message: 'OTP generated', emailSent: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS) });
+    sendOtpEmail(email, otp, purpose, name).catch(e => console.log('❌ EMAIL FAILED:', e.message));
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

@@ -60,7 +60,8 @@ async function loadModels() {
     const avail = (j.models || [])
       .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
       .map(m => m.name.replace("models/", ""));
-    const flash = avail.filter(n => n.includes("flash"));
+    let flash = avail.filter(n => n.includes("flash") && !n.includes("tts") && !n.includes("image"));
+    flash.sort((a, b) => (b === "gemini-3.8-flash") - (a === "gemini-3.8-flash"));
     if (flash.length) { CACHED_MODELS = flash; console.log("🤖 Available Gemini models:", CACHED_MODELS.join(", ")); }
   } catch (e) { console.log("⚠️ Model list fetch failed, using default"); }
   return CACHED_MODELS;
