@@ -17,7 +17,6 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/admin', adminRoutes);
-X
 import adminRoutes from './routes/admin.js';
 
 // Connect to MongoDB Atlas using the string in .env
