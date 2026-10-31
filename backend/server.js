@@ -49,7 +49,7 @@ app.post('/api/generate', async (req, res) => {
   try {
     if (process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" }, { generationConfig: { maxOutputTokens: 500, temperature: 0.7 } });
       const fullPrompt = `You are ${selectedPersona} with ${selectedTone} tone. Task: ${prompt}. Give detailed practical answer 150-300 words.`;
       const result = await model.generateContent(fullPrompt);
       aiResult = result.response.text();
