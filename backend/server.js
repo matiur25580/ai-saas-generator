@@ -49,7 +49,24 @@ app.post('/api/generate', async (req, res) => {
   try {
     if (process.env.GEMINI_API_KEY) {
       const fullPrompt = `You are ${selectedPersona} with ${selectedTone} tone. Task: ${prompt}. Give detailed practical answer 150-300 words.`;
-      const modelsToTry = ["gemini-2.0-flash", "gemini-2.5-flash"];
+let CACHED_MODELS = ["gemini-3.8-flash"];
+let modelsLoaded = false;
+async function loadModels() {
+  if (modelsLoaded) return CACHED_MODELS;
+  modelsLoaded = true;
+  try {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + process.env.GEMINI_API_KEY);
+    const j = await r.json();
+    const avail = (j.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => m.name.replace("models/", ""));
+    const flash = avail.filter(n => n.includes("flash"));
+    if (flash.length) { CACHED_MODELS = flash; console.log("🤖 Available Gemini models:", CACHED_MODELS.join(", ")); }
+  } catch (e) { console.log("⚠️ Model list fetch failed, using default"); }
+  return CACHED_MODELS;
+}
+
+      const modelsToTry = await loadModels();
       for (const modelName of modelsToTry) {
         try {
           const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + process.env.GEMINI_API_KEY;
