@@ -1,7 +1,7 @@
-const express=require('express');
-const jwt=require('jsonwebtoken');
-const Content=require('../models/Content');
-const User=require('../models/User');
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import Content from '../models/Content.js';
+import User from '../models/User.js';
 const router=express.Router();
 const auth=(req,res,next)=>{
   const h=req.headers.authorization;
@@ -14,7 +14,7 @@ router.post('/',auth,async(req,res)=>{
   if(user.credits<=0) return res.status(400).json({success:false,error:'No credits left'});
   const c=await Content.create({userId:req.uid,...req.body});
   user.credits-=1; await user.save();
-  res.json({success:true,data:c,[STRIPPED]
+  res.json({success:true,data:c,credits:user.credits});
 });
 router.get('/',auth,async(req,res)=>{
   const page=parseInt(req.query.page)||1, limit=10;
@@ -28,4 +28,4 @@ router.delete('/:id',auth,async(req,res)=>{
   await Content.deleteOne({_id:req.params.id,userId:req.uid});
   res.json({success:true,message:'Deleted successfully'});
 });
-module.exports=router;
+export default router;
