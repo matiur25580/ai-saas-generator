@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import Landing from './pages/Landing';
+import Admin from './pages/Admin';
 
 function App() {
   const [showLanding, setShowLanding] = useState(true);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [prompt, setPrompt] = useState('');
   const [persona, setPersona] = useState('');
@@ -279,6 +281,7 @@ function App() {
   const totalHistoryCount = history.length;
   const totalBookmarkCount = history.filter(item => item.bookmarked).length;
 
+  if (showAdmin) return <div><button onClick={()=>setShowAdmin(false)} style={{margin:10,padding:'8px 16px',cursor:'pointer'}}>← Back</button><Admin/></div>;
   if (showLanding) return <Landing onGetStarted={()=>setShowLanding(false)} />;
 
   return (
@@ -291,6 +294,7 @@ function App() {
           <span style={{ fontSize: '12px', color: themeStyles.mutedText }}>Full-Stack Connected v3.6</span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setShowAdmin(true)} style={{ background: 'linear-gradient(90deg,#7C3AED,#06B6D4)', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight:'bold' }}>🛡️ Admin</button>
           <button onClick={() => { setCustomApiKey(localStorage.getItem('customApiKey') || ''); setShowSettingsModal(true); }} style={{ background: isDark ? '#334155' : '#e2e8f0', border: 'none', color: themeStyles.textColor, padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>⚙️ Settings</button>
           <button onClick={() => setTheme(isDark ? 'light' : 'dark')} style={{ background: isDark ? '#334155' : '#e2e8f0', border: 'none', color: themeStyles.textColor, padding: '6px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
             {isDark ? '☀️ Light' : '🌙 Dark'}
