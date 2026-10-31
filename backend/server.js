@@ -3,7 +3,6 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import Content from './models/Content.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
 
@@ -46,22 +45,34 @@ app.post('/api/generate', async (req, res) => {
   const selectedPersona = persona || 'Expert Copywriter';
   const selectedTone = aiTone || 'Professional';
   let aiResult = "";
+  // REAL AI via direct REST (no SDK) + model fallback
   try {
     if (process.env.GEMINI_API_KEY) {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const modelsToTry = ["gemini-3.8-flash", "gemini-2.5-flash"];
       const fullPrompt = `You are ${selectedPersona} with ${selectedTone} tone. Task: ${prompt}. Give detailed practical answer 150-300 words.`;
+      const modelsToTry = ["gemini-2.0-flash", "gemini-2.5-flash"];
       for (const modelName of modelsToTry) {
         try {
-          const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 500, temperature: 0.7 } });
-          const result = await model.generateContent(fullPrompt);
-          aiResult = result.response.text();
-          console.log("🤖 Real Gemini AI used:", modelName);
-          break;
+          const url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + process.env.GEMINI_API_KEY;
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: fullPrompt }] }],
+              generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
+            })
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error("HTTP " + r.status + ": " + JSON.stringify(j).slice(0, 150));
+          const c = j.candidates && j.candidates[0];
+          const txt = c && c.content && c.content.parts && c.content.parts[0] && c.content.parts[0].text;
+          if (txt) { aiResult = txt; console.log("🤖 Real Gemini AI used:", modelName); break; }
+          throw new Error("Empty response from model");
         } catch (inner) {
-          console.log("⚠️ Model failed, trying next:", modelName, "-", String(inner.message).slice(0, 100));
+          console.log("⚠️ Model failed, trying next:", modelName, "-", String((inner && inner.message) || inner).slice(0, 120));
         }
       }
+    } else {
+      console.log("⚠️ GEMINI_API_KEY missing in Render env!");
     }
   } catch(e){ console.log("⚠️ Gemini error:", e.message); }
   if (!aiResult) {
