@@ -72,8 +72,15 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
 
   const go = (s) => { setStep(s); setError(''); setInfo(''); setSuccess(''); };
   const post = async (path, body) => {
-    const r = await fetch(BACKEND + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return r.json();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const r = await fetch(BACKEND + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal });
+      return await r.json();
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Request timed out - backend slow, try again');
+      throw e;
+    } finally { clearTimeout(t); }
   };
   const otpInfoMsg = (d) => d.emailSent
     ? '📩 6-digit OTP sent to your email (valid 3 min)'
