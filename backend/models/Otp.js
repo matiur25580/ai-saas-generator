@@ -4,5 +4,5 @@ const otpSchema = new mongoose.Schema({
   otp: String,
   purpose: { type: String, enum: ['signup', 'reset'] }
 }, { timestamps: true });
-otpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 300 });
+otpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 });
 export default mongoose.model('Otp', otpSchema);

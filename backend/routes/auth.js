@@ -18,11 +18,16 @@ router.post('/send-otp', async (req, res) => {
       return res.status(400).json({ success: false, error: 'This email already registered, please login' });
     if (purpose === 'reset' && !existing)
       return res.status(400).json({ success: false, error: "This email doesn't exist, please register first" });
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const oldRec = await Otp.findOne({ email, purpose });
+    let otp, tries = 0;
+    do {
+      otp = Math.floor(100000 + Math.random() * 900000).toString();
+      tries++;
+    } while (oldRec && oldRec.otp === otp && tries < 5);
     await Otp.deleteMany({ email, purpose });
     await Otp.create({ email, otp, purpose });
-    await sendOtpEmail(email, otp, purpose, name);
-    res.json({ success: true, message: 'OTP sent to your email' });
+    const emailSent = await sendOtpEmail(email, otp, purpose, name);
+    res.json({ success: true, message: 'OTP generated', emailSent });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

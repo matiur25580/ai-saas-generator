@@ -8,19 +8,25 @@ export async function sendOtpEmail(email, otp, purpose, name = '') {
     <div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0f172a;color:#fff;padding:32px;border-radius:12px">
       <h2 style="color:#22d3ee">🤖 AI SaaS Generator</h2>
       <h3>${title}</h3>
-      <p>Your 6-digit verification code (valid 5 minutes):</p>
+      <p>Your 6-digit verification code (valid 3 minutes):</p>
       <div style="font-size:32px;font-weight:bold;letter-spacing:8px;background:#1e293b;padding:16px;border-radius:8px;text-align:center;color:#22d3ee">${otp}</div>
       <p style="color:#94a3b8;font-size:12px">If you didn't request this, ignore this email.</p>
     </div>`;
   console.log(`📧 OTP for ${email} [${purpose}]: ${otp}`);
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log('⚠️ EMAIL_USER/EMAIL_PASS not set - OTP only in logs');
-    return;
+    console.log('⚠️ EMAIL_USER/EMAIL_PASS not set - skipping real email');
+    return false;
   }
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-  });
-  await transporter.sendMail({ from: process.env.EMAIL_USER, to: email, subject, html });
-  console.log('✅ OTP email sent to', email);
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+    });
+    await transporter.sendMail({ from: process.env.EMAIL_USER, to: email, subject, html });
+    console.log('✅ OTP email sent to', email);
+    return true;
+  } catch (e) {
+    console.log('❌ EMAIL FAILED:', e.message);
+    return false;
+  }
 }

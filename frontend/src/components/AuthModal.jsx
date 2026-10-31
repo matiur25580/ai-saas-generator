@@ -1,6 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://ai-saas-generator-d3g8.onrender.com';
+const OTP_SECONDS = 180;
+
+const fmt = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 
 function OtpBoxes({ value, onChange }) {
   const refs = useRef([]);
@@ -43,7 +46,22 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
   const [otp, setOtp] = useState([]);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timerKey, setTimerKey] = useState(0);
+
+  useEffect(() => {
+    if (step !== 'signup-otp' && step !== 'forgot-otp') return;
+    setTimeLeft(OTP_SECONDS);
+    const id = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) { clearInterval(id); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [step, timerKey]);
 
   const ts = themeStyles || {};
   const inputS = { width: '100%', padding: '10px', background: ts.inputBg || '#1e293b', color: ts.inputColor || '#fff', border: '1px solid ' + (ts.border || '#475569'), borderRadius: '6px', boxSizing: 'border-box', fontSize: '13px', marginBottom: '10px' };
@@ -52,29 +70,36 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
   const btnDanger = { background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' };
   const linkS = { fontSize: '12px', color: '#38bdf8', cursor: 'pointer', textDecoration: 'underline', background: 'none', border: 'none', padding: '0' };
 
-  const go = (s) => { setStep(s); setError(''); setInfo(''); };
+  const go = (s) => { setStep(s); setError(''); setInfo(''); setSuccess(''); };
   const post = async (path, body) => {
     const r = await fetch(BACKEND + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return r.json();
   };
+  const otpInfoMsg = (d) => d.emailSent
+    ? '📩 6-digit OTP sent to your email (valid 3 min)'
+    : '⚠️ Email service not ready — OTP is in Render Logs (valid 3 min)';
+
   const resend = async (purpose) => {
     setError(''); setLoading(true);
     try {
       const d = await post('/api/auth/send-otp', { email, name, purpose });
       if (!d.success) { setError(d.error || 'Failed'); return; }
-      setInfo('📩 OTP resent! Check your email.');
+      setOtp([]);
+      setTimerKey((k) => k + 1);
+      setInfo('🔄 New OTP sent! ' + (d.emailSent ? 'Check your email.' : 'Check Render Logs.'));
     } catch { setError('Backend connection failed'); } finally { setLoading(false); }
   };
 
   const doLogin = async (e) => {
-    e.preventDefault(); setError('');
+    e.preventDefault(); setError(''); setSuccess('');
     if (!email.trim()) return setError('Please enter email');
     if (!password) return setError('Please enter password');
     setLoading(true);
     try {
       const d = await post('/api/auth/login', { email, password });
       if (!d.success) { setError(d.error || 'Login failed'); return; }
-      onLogin(d.user, d.token);
+      setSuccess('✅ Logged in successfully! Welcome back.');
+      setTimeout(() => onLogin(d.user, d.token), 1300);
     } catch { setError('Backend connection failed'); } finally { setLoading(false); }
   };
 
@@ -87,7 +112,7 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
       const d = await post('/api/auth/send-otp', { email, name, purpose: 'signup' });
       if (!d.success) { setError(d.error || 'Failed to send OTP'); return; }
       setOtp([]); setPassword(''); setConfirm('');
-      setInfo('📩 6-digit OTP sent to your email (valid 5 min)');
+      setInfo(otpInfoMsg(d));
       go('signup-otp');
     } catch { setError('Backend connection failed'); } finally { setLoading(false); }
   };
@@ -115,7 +140,7 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
       const d = await post('/api/auth/send-otp', { email, purpose: 'reset' });
       if (!d.success) { setError(d.error || 'Failed to send OTP'); return; }
       setOtp([]); setPassword(''); setConfirm('');
-      setInfo('📩 6-digit OTP sent to your email (valid 5 min)');
+      setInfo(otpInfoMsg(d));
       go('forgot-otp');
     } catch { setError('Backend connection failed'); } finally { setLoading(false); }
   };
@@ -137,12 +162,29 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
 
   const titles = { login: 'Login', signup: 'Sign Up', 'signup-otp': 'Verify Email', success: '🎉 Successfully Registered!', forgot: 'Forgot Password', 'forgot-otp': 'Reset Password', 'reset-success': '✅ Password Reset!' };
 
+  const timerRow = (purpose, backStep) => (
+    <>
+      {timeLeft > 0 ? (
+        <p style={{ fontSize: '13px', color: '#fbbf24', textAlign: 'center', fontWeight: 'bold', margin: '0 0 8px' }}>⏱️ OTP expires in {fmt(timeLeft)}</p>
+      ) : (
+        <p style={{ fontSize: '13px', color: '#f87171', textAlign: 'center', fontWeight: 'bold', margin: '0 0 8px' }}>⚠️ OTP expired</p>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {timeLeft === 0
+          ? <button type="button" onClick={() => resend(purpose)} disabled={loading} style={linkS}>🔄 Resend OTP</button>
+          : <span />}
+        <button type="button" onClick={() => go(backStep)} style={linkS}>← Back</button>
+      </div>
+    </>
+  );
+
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '15px' }}>
       <div style={{ background: ts.cardBg || '#1e293b', border: '1px solid ' + (ts.border || '#475569'), borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px', maxHeight: '92vh', overflowY: 'auto' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '17px' }}>{titles[step]}</h3>
         {error && <div style={{ background: '#7f1d1d', color: '#fecaca', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', marginBottom: '10px' }}>{error}</div>}
         {info && <div style={{ background: '#1e3a5f', color: '#bae6fd', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', marginBottom: '10px' }}>{info}</div>}
+        {success && <div style={{ background: '#14532d', color: '#bbf7d0', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', marginBottom: '10px', fontWeight: 'bold' }}>{success}</div>}
 
         {step === 'login' && (
           <form onSubmit={doLogin}>
@@ -178,17 +220,14 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
             <input type="password" placeholder="Set password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} style={inputS} />
             <input type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} style={inputS} />
             <button type="submit" disabled={loading} style={btnFull}>{loading ? 'Verifying...' : 'Verify & Create Account'}</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button type="button" onClick={() => resend('signup')} style={linkS}>Resend OTP</button>
-              <button type="button" onClick={() => go('signup')} style={linkS}>← Back</button>
-            </div>
+            {timerRow('signup', 'signup')}
           </form>
         )}
 
         {step === 'success' && (
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontSize: '44px', marginBottom: '8px' }}>🎉</div>
-            <p style={{ fontSize: '14px', color: '#86efac', marginBottom: '16px' }}>Successfully registered!<br />Please login with your email and password.</p>
+            <p style={{ fontSize: '14px', color: '#86efac', marginBottom: '16px', fontWeight: 'bold' }}>Successfully registered!<br /><span style={{ fontWeight: 'normal' }}>Please login with your email and password.</span></p>
             <button onClick={() => { setPassword(''); setConfirm(''); setOtp([]); go('login'); }} style={btnFull}>Back to Login</button>
           </div>
         )}
@@ -209,17 +248,14 @@ export default function AuthModal({ themeStyles, onClose, onLogin }) {
             <input type="password" placeholder="New password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} style={inputS} />
             <input type="password" placeholder="Confirm new password" value={confirm} onChange={(e) => setConfirm(e.target.value)} style={inputS} />
             <button type="submit" disabled={loading} style={btnFull}>{loading ? 'Resetting...' : 'Reset Password'}</button>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button type="button" onClick={() => resend('reset')} style={linkS}>Resend OTP</button>
-              <button type="button" onClick={() => go('forgot')} style={linkS}>← Back</button>
-            </div>
+            {timerRow('reset', 'forgot')}
           </form>
         )}
 
         {step === 'reset-success' && (
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontSize: '44px', marginBottom: '8px' }}>✅</div>
-            <p style={{ fontSize: '14px', color: '#86efac', marginBottom: '16px' }}>Password reset successfully!<br />Please login with your new password.</p>
+            <p style={{ fontSize: '14px', color: '#86efac', marginBottom: '16px', fontWeight: 'bold' }}>Password reset successfully!<br /><span style={{ fontWeight: 'normal' }}>Please login with your new password.</span></p>
             <button onClick={() => { setPassword(''); setConfirm(''); setOtp([]); go('login'); }} style={btnFull}>Back to Login</button>
           </div>
         )}
