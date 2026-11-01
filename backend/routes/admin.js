@@ -1,30 +1,52 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import { body } from 'express-validator';
 import User from '../models/User.js';
 import Content from '../models/Content.js';
+import { requireAdmin } from '../utils/auth.js';
+import { applyCreditChange } from '../utils/credits.js';
+import { ApiError, asyncHandler, validateRequest } from '../utils/http.js';
+
 const router = express.Router();
-const adminAuth = async (req,res,next)=>{
-  const h=req.headers.authorization;
-  if(!h) return res.status(401).json({success:false,error:'No token'});
-  try{
-    const decoded=jwt.verify(h.split(' ')[1],process.env.JWT_SECRET||'secret');
-    const user=await User.findById(decoded.id);
-    if(!user || user.role!=='admin') return res.status(403).json({success:false,error:'Admin only'});
-    req.user=user; next();
-  }catch(e){ res.status(401).json({success:false,error:'Invalid token'}); }
-};
-router.get('/stats', adminAuth, async(req,res)=>{
-  const totalUsers=await User.countDocuments();
-  const totalGenerations=await Content.countDocuments();
-  const recentUsers=await User.find().sort({createdAt:-1}).limit(10).select('name email credits role createdAt');
-  const recentContent=await Content.find().sort({createdAt:-1}).limit(10).select('prompt persona tone createdAt');
-  res.json({success:true, stats:{totalUsers,totalGenerations}, recentUsers, recentContent});
-});
-router.post('/add-credits', adminAuth, async(req,res)=>{
-  const {email, credits}=req.body;
-  const user=await User.findOne({email});
-  if(!user) return res.status(404).json({success:false,error:'User not found'});
-  user.credits+=parseInt(credits); await user.save();
-  res.json({success:true,message:`✅ ${credits} credits added to ${email}`, credits:user.credits});
-});
+
+router.get('/stats', requireAdmin, asyncHandler(async (req, res) => {
+  const [totalUsers, totalGenerations, recentUsers, recentContent] = await Promise.all([
+    User.countDocuments(),
+    Content.countDocuments(),
+    User.find().sort({ createdAt: -1 }).limit(10).select('name email credits role createdAt'),
+    Content.find().sort({ createdAt: -1 }).limit(10).select('prompt persona tone createdAt')
+  ]);
+  const data = { stats: { totalUsers, totalGenerations }, recentUsers, recentContent };
+  res.json({ success: true, data, ...data });
+}));
+
+router.post('/add-credits', requireAdmin, [
+  body('email').isString().withMessage('Email must be text').bail().trim().isEmail().withMessage('Enter a valid user email').normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
+  body('credits').isInt({ min: 1, max: 100000 }).toInt().withMessage('Credits must be an integer from 1 to 100000'),
+  validateRequest
+], asyncHandler(async (req, res) => {
+  const target = await User.findOne({ email: req.body.email });
+  if (!target) {
+    throw new ApiError(404, 'User not found.', 'USER_NOT_FOUND');
+  }
+  const session = await mongoose.startSession();
+  let user;
+  try {
+    await session.withTransaction(async () => {
+      user = await applyCreditChange({
+        userId: target._id,
+        amount: req.body.credits,
+        reason: 'Administrator credit grant',
+        source: 'admin',
+        metadata: { grantedBy: req.userId },
+        session
+      });
+    });
+  } finally {
+    await session.endSession();
+  }
+  const data = { message: `${req.body.credits} credits added.`, credits: user.credits };
+  res.json({ success: true, data, ...data });
+}));
+
 export default router;
