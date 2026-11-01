@@ -20,9 +20,9 @@ Capture and add current production screenshots here after deployment:
 ## ✨ Features
 - 🔐 JWT Auth + 6-digit OTP verification
 - 🤖 Live Gemini text generation with format, persona, tone, length, and temperature controls
-- 🔐 Brevo-delivered signup/reset OTP, lockout, rate limits, and rotating HttpOnly refresh cookies
+- 🔐 HMAC-protected, Brevo-delivered signup/reset OTP, lockout, layered rate limits, and rotating HttpOnly refresh cookies
 - 📚 Account-backed generation history, search, pagination, bookmarks, and delete
-- 💳 Transactional credit ledger for generation debits and admin grants
+- 💳 Transactional credit ledger for starter-credit grants, generation debits, and admin grants
 - 📄 Copy, Markdown/text download, and safe browser print-to-PDF
 - 🌗 Light/dark workspace and responsive landing, auth, studio, and admin screens
 - 🛡️ Helmet, allowlisted CORS, validation, structured errors, request logs, and health status
@@ -135,7 +135,7 @@ Authenticated routes require `Authorization: Bearer <access-token>`. Credit bala
 | `GET` | `/api/admin/stats` | Admin-only user and generation statistics. |
 | `POST` | `/api/admin/add-credits` | Admin-only manual credit grant. Requires `{ email, credits }`, where credits is an integer from 1 to 100000. |
 
-Rate limits use the in-memory express-rate-limit store. Configure a shared store before running multiple backend instances.
+OTP requests are limited to 3 per email and 15 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. Rate limits use the in-memory express-rate-limit store. Configure a shared store before running multiple backend instances.
 
 ## Verification
 

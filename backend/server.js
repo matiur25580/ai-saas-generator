@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { body } from 'express-validator';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import Content from './models/Content.js';
 import User from './models/User.js';
 import authRoutes from './routes/auth.js';
@@ -65,7 +66,7 @@ app.use('/api/admin', adminRoutes);
 if (mongoUri) {
   mongoose.connect(mongoUri)
     .then(() => console.info(JSON.stringify({ level: 'info', event: 'database_connected' })))
-    .catch((error) => console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', message: error.message })));
+    .catch((error) => console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name })));
 } else {
   console.warn(JSON.stringify({ level: 'warn', event: 'database_configuration_missing', message: 'Set MONGO_URI or MONGODB_URI.' }));
 }
@@ -92,6 +93,20 @@ const PREFERRED_MODEL = 'gemini-3.8-flash';
 const OUTPUT_TOKENS = { Short: 350, Medium: 700, Long: 1200 };
 let cachedTextModels;
 let workingModel;
+const generationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId
+    ? `user:${req.userId}`
+    : `ip:${ipKeyGenerator(req.ip || '127.0.0.1')}`,
+  handler: (req, res) => res.status(429).json({
+    success: false,
+    error: 'Too many generation requests. Please try again in 15 minutes.',
+    code: 'GENERATION_RATE_LIMITED'
+  })
+});
 
 function hasTextOutput(model) {
   const modalities = model.outputModalities || model.supportedOutputModalities || model.output?.modalities;
@@ -124,7 +139,7 @@ async function loadTextModels() {
   return cachedTextModels;
 }
 
-app.post('/api/generate', optionalAuth, [
+app.post('/api/generate', optionalAuth, generationRateLimit, [
   body('prompt').isString().withMessage('Prompt must be text').bail().trim().isLength({ min: 1, max: 5000 }).withMessage('Prompt must be 1 to 5000 characters'),
   body('persona').optional({ nullable: true }).isString().withMessage('Persona must be text').bail().isLength({ max: 80 }).withMessage('Persona must be at most 80 characters'),
   body('aiTone').optional({ nullable: true }).isString().withMessage('Tone must be text').bail().isLength({ max: 40 }).withMessage('Tone must be at most 40 characters'),

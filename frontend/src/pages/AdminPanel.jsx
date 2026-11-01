@@ -4,7 +4,7 @@ import { apiFetch } from '../api';
 
 const API = import.meta.env.VITE_BACKEND_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
 
-export default function AdminPanel({ onBack }) {
+export default function AdminPanel({ onBack, onLogin }) {
   const [data, setData] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,8 +41,8 @@ export default function AdminPanel({ onBack }) {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || 'Sign in failed.');
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('loggedInUser', result.user.email);
+      onLogin(result.user, result.token);
+      setNeedLogin(false);
       await loadStats();
     } catch (requestError) { setError(requestError.message || 'Could not connect to the backend.'); }
     finally { setBusy(false); }

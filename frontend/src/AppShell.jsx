@@ -17,6 +17,7 @@ export default function AppShell() {
   const [user, setUser] = useState(() => localStorage.getItem('loggedInUser') || '');
   const [credits, setCredits] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
+  const [sessionError, setSessionError] = useState('');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -34,25 +35,35 @@ export default function AppShell() {
       }
       setUser(session.email);
       setCredits(session.credits);
-    }).catch(() => {});
+    }).catch(() => {
+      if (active) setSessionError('Your previous session could not be verified. Check your connection and try again.');
+    });
     return () => { active = false; };
   }, []);
 
-  const acceptLogin = (account, token) => {
+  const acceptLogin = (account, token, destination = 'studio') => {
     localStorage.setItem('token', token);
     localStorage.setItem('loggedInUser', account.email);
     setUser(account.email);
     setCredits(account.credits);
     setAuthOpen(false);
-    setView('studio');
+    setView(destination);
+    setSessionError('');
   };
 
   const signOut = async () => {
     try {
-      await fetch(`${import.meta.env.VITE_BACKEND_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '')}/api/auth/logout`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '')}/api/auth/logout`, {
         method: 'POST', credentials: 'include'
       });
-    } catch {}
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'The server could not revoke this session.');
+      }
+    } catch {
+      setSessionError('Sign out could not be confirmed. Check your connection and try again.');
+      return;
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('loggedInUser');
     setUser('');
@@ -70,6 +81,7 @@ export default function AppShell() {
   return (
     <ErrorBoundary>
       <div className="app-shell" data-theme={theme}>
+        {sessionError && <div className="inline-alert session-alert" role="alert"><span>{sessionError}</span><button onClick={() => setSessionError('')} aria-label="Dismiss error">×</button></div>}
         <Suspense fallback={<LoadingScreen />}>
           {view === 'landing' && <Landing onOpenStudio={() => setView('studio')} onLogin={() => setAuthOpen(true)} />}
           {view === 'studio' && (
@@ -86,7 +98,7 @@ export default function AppShell() {
               onHome={() => setView('landing')}
             />
           )}
-          {view === 'admin' && <Admin onBack={() => setView('studio')} />}
+          {view === 'admin' && <Admin onBack={() => setView('studio')} onLogin={(account, token) => acceptLogin(account, token, 'admin')} />}
         </Suspense>
         {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onLogin={acceptLogin} />}
       </div>

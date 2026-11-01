@@ -5,7 +5,7 @@ const creditTransactionSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   balanceAfter: { type: Number, required: true },
   reason: { type: String, required: true, maxlength: 160 },
-  source: { type: String, enum: ['generation', 'admin'], required: true },
+  source: { type: String, enum: ['signup', 'generation', 'admin'], required: true },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true });
 

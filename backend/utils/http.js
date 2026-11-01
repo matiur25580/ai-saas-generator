@@ -21,11 +21,24 @@ export function validateRequest(req, res, next) {
 
 export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
-  const status = Number.isInteger(error.status) ? error.status : 500;
-  const code = error.code || (status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR');
+  const isDuplicate = error.code === 11000;
+  const isValidation = error.name === 'ValidationError';
+  const isInvalidId = error.name === 'CastError';
+  const isHttpError = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599;
+  const status = isDuplicate ? 409
+    : isValidation || isInvalidId ? 400
+      : isHttpError ? error.status : 500;
+  const code = isDuplicate ? 'RESOURCE_CONFLICT'
+    : isValidation ? 'VALIDATION_ERROR'
+      : isInvalidId ? 'INVALID_ID'
+        : typeof error.code === 'string' ? error.code
+          : status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR';
   const message = status >= 500 && code === 'INTERNAL_ERROR'
     ? 'An unexpected error occurred. Please try again later.'
-    : error.message;
+    : isDuplicate ? 'A record with these details already exists.'
+      : isValidation ? 'The submitted data is invalid.'
+        : isInvalidId ? 'The requested identifier is invalid.'
+          : error.message;
   console.error(JSON.stringify({
     level: 'error',
     timestamp: new Date().toISOString(),
@@ -33,7 +46,7 @@ export function errorHandler(error, req, res, next) {
     path: req.path,
     status,
     code,
-    message: error.message
+    message: status >= 500 ? (error.name || 'ServerError') : error.message
   }));
   res.status(status).json({ success: false, error: message, code });
 }

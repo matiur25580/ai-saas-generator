@@ -6,10 +6,14 @@ export async function refreshSession() {
     refreshPromise = (async () => {
       const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, { method: 'POST', credentials: 'include' });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) {
+      if (response.status === 401) {
         localStorage.removeItem('token');
         localStorage.removeItem('loggedInUser');
         return null;
+      }
+      if (!response.ok) throw new Error(data.error || 'Could not verify the current session.');
+      if (!data.success || !data.token || !data.user?.email) {
+        throw new Error('The server returned an invalid session response.');
       }
       localStorage.setItem('token', data.token);
       localStorage.setItem('loggedInUser', data.user.email);

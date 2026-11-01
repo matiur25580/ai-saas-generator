@@ -1,11 +1,13 @@
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { body } from 'express-validator';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
+import CreditTransaction from '../models/CreditTransaction.js';
 import { sendOtpEmail } from '../utils/sendEmail.js';
 import { ApiError, asyncHandler, validateRequest } from '../utils/http.js';
 
@@ -46,14 +48,24 @@ async function createSession(user, res) {
   return accessToken;
 }
 
-const otpRateLimit = rateLimit({
+const otpIpRateLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({
+    success: false,
+    error: 'Too many verification requests from this network. Please try again in 10 minutes.',
+    code: 'OTP_IP_RATE_LIMITED'
+  })
+});
+
+const otpEmailRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 3,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.body?.email
-    ? `email:${String(req.body.email).trim().toLowerCase()}`
-    : `ip:${ipKeyGenerator(req.ip || '127.0.0.1')}`,
+  keyGenerator: (req) => `email:${String(req.body?.email || '').trim().toLowerCase()}`,
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many OTP requests. Please try again in 10 minutes.',
@@ -83,7 +95,7 @@ const passwordField = (field = 'password') => body(field)
   .bail()
   .isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters');
 
-router.post('/send-otp', otpRateLimit, [
+router.post('/send-otp', otpIpRateLimit, otpEmailRateLimit, [
   emailField(),
   body('name').optional().isString().trim().isLength({ min: 1, max: 80 }).withMessage('Name must be 1 to 80 characters'),
   body('purpose').isString().withMessage('Purpose must be text').bail().isIn(['signup', 'reset']).withMessage('Purpose must be signup or reset'),
@@ -104,15 +116,18 @@ router.post('/send-otp', otpRateLimit, [
   }
 
   const otp = String(randomInt(100000, 1000000));
+  const otpHash = createHmac('sha256', jwtSecret())
+    .update(`${email}:${purpose}:${otp}`)
+    .digest('hex');
   await Otp.findOneAndUpdate(
     { email, purpose },
-    { $set: { otp, failedAttempts: 0, lockedUntil: null, expiresAt: new Date(Date.now() + OTP_LIFETIME_MS) } },
+    { $set: { otp: otpHash, failedAttempts: 0, lockedUntil: null, expiresAt: new Date(Date.now() + OTP_LIFETIME_MS) } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   try {
     await sendOtpEmail(email, otp, purpose, name);
   } catch (error) {
-    await Otp.deleteOne({ email, purpose, otp });
+    await Otp.deleteOne({ email, purpose, otp: otpHash });
     if (error.code === 'EMAIL_NOT_CONFIGURED') {
       throw new ApiError(503, 'Email delivery is not configured. Please contact support.', 'EMAIL_NOT_CONFIGURED');
     }
@@ -132,10 +147,16 @@ async function consumeOtp(email, purpose, submittedOtp) {
   if (record.expiresAt <= new Date()) {
     throw new ApiError(400, 'Invalid or expired OTP.', 'OTP_INVALID_OR_EXPIRED');
   }
-  if (record.otp !== submittedOtp) {
+  const submittedHash = createHmac('sha256', jwtSecret())
+    .update(`${email}:${purpose}:${submittedOtp}`)
+    .digest('hex');
+  const expectedHash = record.otp || '';
+  const matches = expectedHash.length === submittedHash.length
+    && timingSafeEqual(Buffer.from(expectedHash), Buffer.from(submittedHash));
+  if (!matches) {
     const now = new Date();
     await Otp.findOneAndUpdate(
-      { _id: record._id },
+      { _id: record._id, otp: expectedHash, expiresAt: { $gt: now } },
       [
         { $set: { failedAttempts: { $add: [{ $ifNull: ['$failedAttempts', 0] }, 1] } } },
         { $set: {
@@ -151,7 +172,15 @@ async function consumeOtp(email, purpose, submittedOtp) {
     }
     throw new ApiError(400, 'Invalid or expired OTP.', 'OTP_INVALID_OR_EXPIRED');
   }
-  await Otp.deleteOne({ _id: record._id });
+  const consumed = await Otp.findOneAndDelete({
+    _id: record._id,
+    otp: expectedHash,
+    expiresAt: { $gt: new Date() },
+    $or: [{ lockedUntil: null }, { lockedUntil: { $lte: new Date() } }]
+  });
+  if (!consumed) {
+    throw new ApiError(400, 'Invalid or expired OTP.', 'OTP_INVALID_OR_EXPIRED');
+  }
 }
 
 router.post('/register', [
@@ -165,9 +194,23 @@ router.post('/register', [
   if (await User.findOne({ email })) {
     throw new ApiError(400, 'This email is already registered. Please log in.', 'EMAIL_ALREADY_REGISTERED');
   }
-  await consumeOtp(email, 'signup', otp);
   const hash = await bcrypt.hash(password, 12);
-  await User.create({ name, email, password: hash });
+  await consumeOtp(email, 'signup', otp);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const [user] = await User.create([{ name, email, password: hash }], { session });
+      await CreditTransaction.create([{
+        userId: user._id,
+        amount: user.credits,
+        balanceAfter: user.credits,
+        reason: 'Welcome credits',
+        source: 'signup'
+      }], { session });
+    });
+  } finally {
+    await session.endSession();
+  }
   res.status(201).json({ success: true, data: { message: 'Successfully registered. Please log in.' }, message: 'Successfully registered. Please log in.' });
 }));
 
@@ -193,11 +236,18 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   try {
     decoded = jwt.verify(token, jwtSecret());
   } catch {
+    res.clearCookie(REFRESH_COOKIE, cookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_INVALID');
   }
-  if (decoded.type !== 'refresh') throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_INVALID');
+  if (decoded.type !== 'refresh') {
+    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_INVALID');
+  }
   const user = await User.findOne({ _id: decoded.id, refreshTokenHash: hashToken(token) });
-  if (!user) throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_REVOKED');
+  if (!user) {
+    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_REVOKED');
+  }
   const accessToken = await createSession(user, res);
   const account = { name: user.name, email: user.email, credits: user.credits };
   res.json({ success: true, data: { token: accessToken, user: account }, token: accessToken, user: account });

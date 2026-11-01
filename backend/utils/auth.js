@@ -27,7 +27,7 @@ export const requireAdmin = [
   requireAuth,
   asyncHandler(async (req, res, next) => {
     const user = await User.findById(req.userId).select('role');
-    if (!user || user.role.toLowerCase() !== 'admin') {
+    if (String(user?.role || '').toLowerCase() !== 'admin') {
       throw new ApiError(403, 'Administrator access is required.', 'ADMIN_REQUIRED');
     }
     next();
