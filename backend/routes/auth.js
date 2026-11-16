@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
 import CreditTransaction from '../models/CreditTransaction.js';
+import { rotateRefreshSession } from '../utils/session.js';
 import { sendOtpEmail } from '../utils/sendEmail.js';
 import { ApiError, asyncHandler, validateRequest } from '../utils/http.js';
 
@@ -248,9 +249,14 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     res.clearCookie(REFRESH_COOKIE, cookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_REVOKED');
   }
-  const accessToken = await createSession(user, res);
-  const account = { name: user.name, email: user.email, credits: user.credits };
-  res.json({ success: true, data: { token: accessToken, user: account }, token: accessToken, user: account });
+  const rotated = await rotateRefreshSession({ userModel: User, userId: user._id, currentRefreshToken: token, secret: jwtSecret() });
+  if (!rotated) {
+    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_ALREADY_USED');
+  }
+  res.cookie(REFRESH_COOKIE, rotated.refreshToken, cookieOptions());
+  const account = { name: rotated.user.name, email: rotated.user.email, credits: rotated.user.credits };
+  res.json({ success: true, data: { token: rotated.accessToken, user: account }, token: rotated.accessToken, user: account });
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {
