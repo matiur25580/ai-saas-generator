@@ -11,11 +11,7 @@ Draftline is a React and Express writing workspace that sends real content reque
 
 ## Screenshots
 
-Capture and add current production screenshots here after deployment:
-
-- Landing page: `docs/screenshots/landing.png` (placeholder)
-- Writing studio: `docs/screenshots/studio.png` (placeholder)
-- Account history and credits: `docs/screenshots/account.png` (placeholder)
+A genuine screenshot gallery is being prepared. The capture checklist and safe-data rules are in [docs/screenshots/README.md](docs/screenshots/README.md). The earlier screenshot filenames were placeholders only; they have been removed so the README does not display broken image links. Capture the live landing page and authenticated workspace before adding images.
 
 ## ✨ Features
 - 🔐 JWT Auth + 6-digit OTP verification
