@@ -59,3 +59,13 @@ test('requires a valid cutoff date', async () => {
     TypeError
   );
 });
+
+test('counts a reservation already settled by another worker as skipped', async () => {
+  const result = await reconcileReservations({
+    cutoff: new Date(),
+    findPending: async () => [{ _id: 'already-completed' }],
+    refund: async () => false
+  });
+
+  assert.deepEqual(result, { scanned: 1, refunded: 0, skipped: 1 });
+});
