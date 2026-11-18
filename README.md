@@ -77,7 +77,7 @@ Set these variables in the backend deployment. Production startup fails fast if 
 
 - `MONGO_URI`: MongoDB Atlas connection string. Atlas must support replica-set transactions for credit changes.
 - `JWT_SECRET`: long, random secret used to sign access and refresh tokens.
-- `GEMINI_API_KEY`: Google AI API key. The server prioritizes `gemini-3.8-flash` and only discovers flash models that support text output.
+- `GEMINI_API_KEY`: Google AI API key. The server sends it in the `x-goog-api-key` header, prioritizes `gemini-3.8-flash` when listed, and limits each generation to three text-capable Flash model attempts (30 seconds per attempt).
 - `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. Gmail SMTP is not used.
 - `FRONTEND_URL`: the exact HTTPS Vercel origin, for example `https://your-project.vercel.app`. CORS does not accept wildcard origins.
 - `NODE_ENV=production` and `PORT` as supplied by the host.
@@ -140,4 +140,4 @@ cd frontend && VITE_BACKEND_URL=http://localhost:5000 npm run build
 cd ../backend && npm test && npm audit && npm start
 ```
 
-The backend test suite includes HTTP error-contract and refresh-token rotation tests, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection and guest generation. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
+The backend test suite includes HTTP error-contract and refresh-token rotation tests, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection, guest generation, API-key header handling and bounded three-model failover. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
