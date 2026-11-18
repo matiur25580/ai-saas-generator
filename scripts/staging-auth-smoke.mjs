@@ -15,13 +15,32 @@ function cookieFrom(response) {
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('set-cookie')].filter(Boolean);
-  const refreshCookie = setCookies
-    .map((value) => value.split(';', 1)[0])
-    .find((value) => value.startsWith('refreshToken='));
-  if (!refreshCookie || refreshCookie === 'refreshToken=') {
+  const rawCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('refreshToken='));
+  if (!rawCookie) throw new Error('Expected a refreshToken Set-Cookie header.');
+
+  const [nameValue, ...attributes] = rawCookie.split(';').map((part) => part.trim());
+  if (!nameValue.startsWith('refreshToken=') || nameValue === 'refreshToken=') {
     throw new Error('Expected a non-empty refreshToken cookie.');
   }
-  return refreshCookie;
+  const normalizedAttributes = new Map(attributes.map((attribute) => {
+    const separator = attribute.indexOf('=');
+    return separator === -1
+      ? [attribute.toLowerCase(), true]
+      : [attribute.slice(0, separator).toLowerCase(), attribute.slice(separator + 1)];
+  }));
+
+  for (const requiredFlag of ['httponly', 'secure']) {
+    if (!normalizedAttributes.has(requiredFlag)) {
+      throw new Error(`Refresh cookie is missing the ${requiredFlag} flag.`);
+    }
+  }
+  if (String(normalizedAttributes.get('samesite') || '').toLowerCase() !== 'none') {
+    throw new Error('Refresh cookie must use SameSite=None in staging.');
+  }
+  if (normalizedAttributes.get('path') !== '/api/auth') {
+    throw new Error('Refresh cookie must be scoped to /api/auth.');
+  }
+  return nameValue;
 }
 
 async function request(path, { method = 'GET', body, cookie } = {}) {
