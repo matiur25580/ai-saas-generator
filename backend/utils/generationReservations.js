@@ -20,8 +20,9 @@ export async function reconcileReservations({
 
   for (const reservation of reservations) {
     try {
-      await refund(reservation);
-      refunded += 1;
+      const wasRefunded = await refund(reservation);
+      if (wasRefunded === false) skipped += 1;
+      else refunded += 1;
     } catch {
       skipped += 1;
     }
