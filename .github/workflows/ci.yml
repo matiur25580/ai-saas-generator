@@ -61,6 +61,9 @@ jobs:
           exit 1
       - run: node --check server.js
         working-directory: backend
+      - name: Check staging smoke-test script syntax
+        run: node --check ../scripts/staging-auth-smoke.mjs
+        working-directory: backend
       - run: node --check utils/credits.js
         working-directory: backend
       - run: npm test
