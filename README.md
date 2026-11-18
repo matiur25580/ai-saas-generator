@@ -78,11 +78,11 @@ Set these variables in the backend deployment. Production startup fails fast if 
 - `MONGO_URI`: MongoDB Atlas connection string. Atlas must support replica-set transactions for credit changes.
 - `JWT_SECRET`: long, random secret used to sign access and refresh tokens.
 - `GEMINI_API_KEY`: Google AI API key. The server sends it in the `x-goog-api-key` header, prioritizes `gemini-3.8-flash` when listed, and limits each generation to three text-capable Flash model attempts (30 seconds per attempt).
-- `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. Gmail SMTP is not used.
-- `FRONTEND_URL`: the exact HTTPS Vercel origin, for example `https://your-project.vercel.app`. CORS does not accept wildcard origins.
+- `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. These are required for signup/reset OTP email, but are optional for backend startup; OTP requests return `503 EMAIL_NOT_CONFIGURED` until configured. Gmail SMTP is not used.
+- `FRONTEND_URL`: the exact HTTPS frontend origin. If omitted in production, the server uses `https://ai-saas-generator.vercel.app` as its default allowlisted origin. Set this variable when using a custom frontend domain. CORS does not accept wildcard origins.
 - `NODE_ENV=production` and `PORT` as supplied by the host.
 
-Set `VITE_BACKEND_URL` in the frontend deployment to the backend origin. A production build emits a warning when this value is missing. `FRONTEND_URL` must exactly match the deployed Vercel origin.
+Set `VITE_BACKEND_URL` in the frontend deployment to the backend origin. A production build emits a warning when this value is missing. When using a custom frontend domain, `FRONTEND_URL` must exactly match the deployed frontend origin.
 
 ### OTP TTL Index Migration
 
