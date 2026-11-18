@@ -23,5 +23,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Check required staging secrets
+        shell: bash
+        run: |
+          missing=()
+          for name in STAGING_API_BASE_URL STAGING_TEST_EMAIL STAGING_TEST_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing GitHub Actions repository secret(s): ${missing[*]}"
+            echo "Add the missing secrets under Settings > Secrets and variables > Actions, then rerun this workflow."
+            exit 1
+          fi
+
+          echo "All required staging secrets are configured."
       - name: Run staging authentication smoke test
         run: node scripts/staging-auth-smoke.mjs
