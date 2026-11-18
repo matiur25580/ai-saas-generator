@@ -12,7 +12,7 @@ const mongoUri = process.env.MONGODB_TEST_URI;
 test('generation API persists successful output and safely settles credit reservations', { skip: !mongoUri }, async (t) => {
   const originalFetch = globalThis.fetch;
   const secret = 'integration-test-jwt-secret-with-sufficient-entropy';
-  let providerMode = 'success';
+  let providerMode = 'fail-twice-then-success';
   let generationCalls = 0;
   let providerAuthHeaderValid = true;
 
