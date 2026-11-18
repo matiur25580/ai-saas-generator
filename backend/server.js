@@ -23,7 +23,8 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
-const frontendOrigin = process.env.FRONTEND_URL;
+const DEFAULT_FRONTEND_ORIGIN = 'https://ai-saas-generator.vercel.app';
+const frontendOrigin = process.env.FRONTEND_URL || (isProduction ? DEFAULT_FRONTEND_ORIGIN : undefined);
 const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
 if (isProduction) {
   const missingConfig = [
@@ -31,7 +32,6 @@ if (isProduction) {
     ['MONGO_URI', mongoUri],
     ['JWT_SECRET', process.env.JWT_SECRET],
     ['GEMINI_API_KEY', process.env.GEMINI_API_KEY],
-    ['BREVO_API_KEY', process.env.BREVO_API_KEY],
     ['BREVO_SENDER_EMAIL or EMAIL_USER', process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER]
   ].filter(([, value]) => !value).map(([name]) => name);
   if (missingConfig.length) throw new Error(`Missing production configuration: ${missingConfig.join(', ')}`);
