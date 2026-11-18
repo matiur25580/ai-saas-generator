@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import CreditTransaction from '../models/CreditTransaction.js';
 import { ApiError } from './http.js';
+import { reconcileReservations } from './generationReservations.js';
 
 export async function applyCreditChange({ userId, amount, reason, source, metadata = {}, session, includeTransaction = false }) {
   const existingUser = await User.findById(userId).session(session);
@@ -53,34 +54,21 @@ export async function reconcilePendingGenerationReservations({
   now = new Date()
 } = {}) {
   const cutoff = new Date(now.getTime() - olderThanMs);
-  const pending = await CreditTransaction.find({
-    source: 'generation',
-    'metadata.status': 'reserved',
-    createdAt: { $lt: cutoff }
-  })
-    .sort({ createdAt: 1 })
-    .limit(batchSize)
-    .select('_id userId')
-    .lean();
-
-  let refunded = 0;
-  let skipped = 0;
-  for (const reservation of pending) {
-    try {
-      await refundGenerationReservation({
-        userId: reservation.userId,
-        reservationId: reservation._id
-      });
-      refunded += 1;
-    } catch (error) {
-      skipped += 1;
-      console.error(JSON.stringify({
-        level: 'error',
-        event: 'generation_reservation_reconciliation_failed',
-        reservationId: String(reservation._id),
-        error: error.name
-      }));
-    }
-  }
-  return { scanned: pending.length, refunded, skipped };
+  return reconcileReservations({
+    cutoff,
+    batchSize,
+    findPending: ({ cutoff: reservationCutoff, batchSize: limit }) => CreditTransaction.find({
+      source: 'generation',
+      'metadata.status': 'reserved',
+      createdAt: { $lt: reservationCutoff }
+    })
+      .sort({ createdAt: 1 })
+      .limit(limit)
+      .select('_id userId')
+      .lean(),
+    refund: (reservation) => refundGenerationReservation({
+      userId: reservation.userId,
+      reservationId: reservation._id
+    })
+  });
 }
