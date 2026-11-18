@@ -29,17 +29,6 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    services:
-      mongodb:
-        image: mongo:7
-        command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
     env:
       MONGODB_TEST_URI: mongodb://localhost:27017/ai_saas_test?replicaSet=rs0
     steps:
@@ -56,6 +45,28 @@ jobs:
           MONGO_CONTAINER_ID="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n 1)"
           test -n "$MONGO_CONTAINER_ID"
           docker exec "$MONGO_CONTAINER_ID" mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
+      - name: Start MongoDB replica set
+        run: |
+          set -euo pipefail
+          docker run --detach --name mongo-ci --publish 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
+          for attempt in $(seq 1 30); do
+            if docker exec mongo-ci mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" 2>/dev/null | grep -q 1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec mongo-ci mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
+          for attempt in $(seq 1 30); do
+            if docker exec mongo-ci mongosh --quiet --eval "db.hello().isWritablePrimary" 2>/dev/null | grep -q true; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MongoDB replica set did not become primary" >&2
+          exit 1
+      - name: Stop MongoDB
+        if: always()
+        run: docker rm --force mongo-ci || true
       - run: node --check server.js
         working-directory: backend
       - run: node --check utils/credits.js
