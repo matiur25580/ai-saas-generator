@@ -26,6 +26,7 @@ export async function applyCreditChange({ userId, amount, reason, source, metada
 
 export async function refundGenerationReservation({ userId, reservationId }) {
   const session = await mongoose.startSession();
+  let refunded = false;
   try {
     await session.withTransaction(async () => {
       const reservation = await CreditTransaction.findOneAndUpdate(
@@ -42,7 +43,9 @@ export async function refundGenerationReservation({ userId, reservationId }) {
         metadata: { reservationId: String(reservation._id), status: 'refund' },
         session
       });
+      refunded = true;
     });
+    return refunded;
   } finally {
     await session.endSession();
   }
