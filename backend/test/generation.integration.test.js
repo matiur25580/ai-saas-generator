@@ -14,6 +14,7 @@ test('generation API persists successful output and safely settles credit reserv
   const secret = 'integration-test-jwt-secret-with-sufficient-entropy';
   let providerMode = 'success';
   let generationCalls = 0;
+  let providerAuthHeaderValid = true;
 
   process.env.NODE_ENV = 'test';
   process.env.MONGO_URI = mongoUri;
@@ -26,17 +27,26 @@ test('generation API persists successful output and safely settles credit reserv
     if (url.hostname !== 'generativelanguage.googleapis.com') {
       return originalFetch(input, init);
     }
+    providerAuthHeaderValid = providerAuthHeaderValid
+      && url.searchParams.has('key') === false
+      && new Headers(init?.headers).get('x-goog-api-key') === 'integration-test-key';
     if (url.pathname === '/v1beta/models') {
       return new Response(JSON.stringify({
-        models: [{
-          name: 'models/gemini-3.8-flash',
+        models: ['3.8', '3.7', '3.6', '3.5', '3.4'].map((version) => ({
+          name: `models/gemini-${version}-flash`,
           supportedGenerationMethods: ['generateContent'],
           outputModalities: ['TEXT']
-        }]
+        }))
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
     generationCalls += 1;
+    if (providerMode === 'fail-twice-then-success' && generationCalls <= 2) {
+      return new Response(JSON.stringify({ error: { message: 'Simulated unavailable model' } }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
     if (providerMode === 'failure') {
       return new Response(JSON.stringify({ error: { message: 'Simulated provider outage' } }), {
         status: 503,
@@ -81,6 +91,8 @@ test('generation API persists successful output and safely settles credit reserv
       assert.equal(body.result, 'Integration-tested generated copy.');
       assert.equal(body.credits, 1);
       assert.ok(body.id);
+      assert.equal(generationCalls, 3, 'model failover should stop after the third model succeeds');
+      assert.equal(providerAuthHeaderValid, true, 'Gemini API key must be sent only in the x-goog-api-key header');
 
       const saved = await Content.findById(body.id);
       assert.equal(saved.userId.toString(), user._id.toString());
@@ -99,12 +111,14 @@ test('generation API persists successful output and safely settles credit reserv
         credits: 1
       });
       providerMode = 'failure';
+      const callsBeforeFailure = generationCalls;
       const response = await requestGeneration(createToken(user._id), 'Generate a launch announcement');
       const body = await response.json();
       providerMode = 'success';
 
       assert.equal(response.status, 502);
       assert.equal(body.code, 'AI_UNAVAILABLE');
+      assert.ok(generationCalls - callsBeforeFailure <= 3, 'provider failover must be bounded to three model attempts');
       assert.equal((await User.findById(user._id)).credits, 1);
 
       const reservation = await CreditTransaction.findOne({ userId: user._id, amount: -1 });
