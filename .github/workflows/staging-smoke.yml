@@ -1,0 +1,27 @@
+name: Staging Authentication Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-auth-smoke
+  cancel-in-progress: false
+
+jobs:
+  staging-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_API_BASE_URL: ${{ secrets.STAGING_API_BASE_URL }}
+      STAGING_TEST_EMAIL: ${{ secrets.STAGING_TEST_EMAIL }}
+      STAGING_TEST_PASSWORD: ${{ secrets.STAGING_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run staging authentication smoke test
+        run: node scripts/staging-auth-smoke.mjs
