@@ -32,6 +32,7 @@ jobs:
     services:
       mongodb:
         image: mongo:7
+        command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
         ports:
           - 27017:27017
         options: >-
@@ -51,7 +52,10 @@ jobs:
       - run: npm ci
         working-directory: backend
       - name: Initialize MongoDB replica set
-        run: docker exec "${{ job.services.mongodb.id }}" mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
+        run: |
+          MONGO_CONTAINER_ID="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n 1)"
+          test -n "$MONGO_CONTAINER_ID"
+          docker exec "$MONGO_CONTAINER_ID" mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
       - run: node --check server.js
         working-directory: backend
       - run: node --check utils/credits.js
