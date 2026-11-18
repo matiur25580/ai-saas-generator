@@ -31,8 +31,7 @@ if (isProduction) {
     ['FRONTEND_URL', frontendOrigin],
     ['MONGO_URI', mongoUri],
     ['JWT_SECRET', process.env.JWT_SECRET],
-    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY],
-    ['BREVO_SENDER_EMAIL or EMAIL_USER', process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER]
+    ['GEMINI_API_KEY', process.env.GEMINI_API_KEY]
   ].filter(([, value]) => !value).map(([name]) => name);
   if (missingConfig.length) throw new Error(`Missing production configuration: ${missingConfig.join(', ')}`);
 }
