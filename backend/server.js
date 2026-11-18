@@ -14,7 +14,7 @@ import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
 import adminRoutes from './routes/admin.js';
 import { optionalAuth } from './utils/auth.js';
-import { applyCreditChange } from './utils/credits.js';
+import { applyCreditChange, refundGenerationReservation } from './utils/credits.js';
 import { ApiError, asyncHandler, errorHandler, validateRequest } from './utils/http.js';
 
 dotenv.config();
@@ -250,7 +250,6 @@ app.post('/api/generate', optionalAuth, generationRateLimit, [
   } catch (error) {
     if (reservationId) {
       try {
-        const { refundGenerationReservation } = await import('./utils/credits.js');
         await refundGenerationReservation({ userId: req.userId, reservationId });
       } catch (refundError) {
         console.error(JSON.stringify({
