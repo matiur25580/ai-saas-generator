@@ -133,6 +133,20 @@ Authenticated routes require `Authorization: Bearer <access-token>`. Credit bala
 
 OTP requests are limited to 3 per email and 15 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. Rate limits use the in-memory express-rate-limit store. Configure a shared store before running multiple backend instances.
 
+## Staging Authentication Smoke Test
+
+A manual GitHub Actions workflow checks the deployed **staging** API without creating users, sending OTP email, or calling Gemini. It verifies API readiness, login, HttpOnly refresh-cookie issuance, refresh-token rotation, logout, and rejection of the revoked refresh token.
+
+1. Deploy this repository to a separate staging backend connected to a non-production MongoDB database. Do not point this workflow at the production API.
+2. Create a disposable test account in staging using the normal signup/OTP flow.
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add:
+   - `STAGING_API_BASE_URL`: the HTTPS base URL of the staging backend.
+   - `STAGING_TEST_EMAIL`: the disposable staging account email.
+   - `STAGING_TEST_PASSWORD`: that account's password.
+4. Open **Actions → Staging Authentication Smoke Test → Run workflow**.
+
+The script explicitly refuses the production Render API hostname. It never prints the test email, password, access token, or refresh cookie. Run this only against a dedicated staging account; the workflow logs that account out and verifies that its rotated refresh token is revoked.
+
 ## Verification
 
 ```bash
