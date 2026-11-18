@@ -40,11 +40,6 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
         working-directory: backend
-      - name: Initialize MongoDB replica set
-        run: |
-          MONGO_CONTAINER_ID="$(docker ps --filter 'ancestor=mongo:7' --format '{{.ID}}' | head -n 1)"
-          test -n "$MONGO_CONTAINER_ID"
-          docker exec "$MONGO_CONTAINER_ID" mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
       - name: Start MongoDB replica set
         run: |
           set -euo pipefail
@@ -64,12 +59,12 @@ jobs:
           done
           echo "MongoDB replica set did not become primary" >&2
           exit 1
-      - name: Stop MongoDB
-        if: always()
-        run: docker rm --force mongo-ci || true
       - run: node --check server.js
         working-directory: backend
       - run: node --check utils/credits.js
         working-directory: backend
       - run: npm test
         working-directory: backend
+      - name: Stop MongoDB
+        if: always()
+        run: docker rm --force mongo-ci || true
