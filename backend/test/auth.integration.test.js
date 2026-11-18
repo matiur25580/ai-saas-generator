@@ -122,6 +122,16 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       const replayBody = await replayResponse.json();
       assert.equal(replayResponse.status, 401);
       assert.equal(replayBody.code, 'REFRESH_TOKEN_REVOKED');
+
+      const logoutResponse = await post('/api/auth/logout', {}, rotatedCookie);
+      const logoutBody = await logoutResponse.json();
+      assert.equal(logoutResponse.status, 200);
+      assert.equal(logoutBody.success, true);
+
+      const afterLogoutResponse = await post('/api/auth/refresh', {}, rotatedCookie);
+      const afterLogoutBody = await afterLogoutResponse.json();
+      assert.equal(afterLogoutResponse.status, 401);
+      assert.equal(afterLogoutBody.code, 'REFRESH_TOKEN_REVOKED');
     });
 
     await t.test('five invalid OTP attempts lock the verification record', async () => {
