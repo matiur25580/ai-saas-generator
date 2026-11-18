@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { body } from 'express-validator';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
@@ -42,7 +42,7 @@ function cookieOptions() {
 async function createSession(user, res) {
   const secret = jwtSecret();
   const accessToken = jwt.sign({ id: user._id.toString(), type: 'access' }, secret, { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ id: user._id.toString(), type: 'refresh' }, secret, { expiresIn: '7d' });
+  const refreshToken = jwt.sign({ id: user._id.toString(), type: 'refresh', jti: randomUUID() }, secret, { expiresIn: '7d' });
   user.refreshTokenHash = hashToken(refreshToken);
   await user.save();
   res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions());
