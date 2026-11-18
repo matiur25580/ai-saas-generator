@@ -296,6 +296,8 @@ app.post('/api/generate', optionalAuth, generationRateLimit, [
 app.use((req, res, next) => next(new ApiError(404, 'API endpoint not found.', 'NOT_FOUND')));
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+export const server = app.listen(PORT, () => {
   console.info(JSON.stringify({ level: 'info', event: 'server_listening', port: PORT }));
 });
+
+export default app;
