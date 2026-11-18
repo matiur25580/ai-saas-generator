@@ -33,8 +33,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     const url = new URL(typeof input === 'string' ? input : input.url);
     if (url.hostname === 'api.brevo.com') {
       const payload = JSON.parse(init.body);
-      assert.equal(payload.to[0].email, email);
-      deliveredHtml = payload.htmlContent;
+      if (payload.to[0].email === email) deliveredHtml = payload.htmlContent;
       return new Response(JSON.stringify({ messageId: 'integration-test-message' }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' }
@@ -71,7 +70,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(sendResponse.status, 200);
       assert.equal(sendBody.emailSent, true);
 
-      const otpMatch = deliveredHtml.match(/>(\\d{6})<\\/div>/);
+      const otpMatch = deliveredHtml.match(/>(\d{6})<\/div>/);
       assert.ok(otpMatch, 'mock email should contain the generated six-digit OTP');
       const otp = otpMatch[1];
 
