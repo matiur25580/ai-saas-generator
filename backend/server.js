@@ -120,6 +120,8 @@ app.get('/api/health', (req, res) => {
 
 const PREFERRED_MODEL = 'gemini-3.8-flash';
 const OUTPUT_TOKENS = { Short: 350, Medium: 700, Long: 1200 };
+const MAX_MODEL_ATTEMPTS = 3;
+const MODEL_REQUEST_TIMEOUT_MS = 30_000;
 let cachedTextModels;
 let workingModel;
 const generationRateLimit = rateLimit({
@@ -146,7 +148,8 @@ function hasTextOutput(model) {
 async function loadTextModels() {
   if (cachedTextModels) return cachedTextModels;
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GEMINI_API_KEY}`, {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+      headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY },
       signal: AbortSignal.timeout(10000)
     });
     if (!response.ok) throw new Error(`Model discovery returned HTTP ${response.status}`);
@@ -160,7 +163,8 @@ async function loadTextModels() {
       .filter((model) => /flash/i.test(model.name || '') && !/(tts|image|audio|embedding|veo)/i.test(model.name || ''))
       .filter(hasTextOutput)
       .map((model) => model.name.replace(/^models\//, ''));
-    cachedTextModels = [...new Set([...(preferredIsText ? [PREFERRED_MODEL] : []), ...discovered])];
+    cachedTextModels = [...new Set([...(preferredFromList && preferredIsText ? [PREFERRED_MODEL] : []), ...discovered])];
+    if (cachedTextModels.length === 0) cachedTextModels = [PREFERRED_MODEL];
   } catch (error) {
     console.error(JSON.stringify({ level: 'warn', event: 'gemini_model_discovery_failed', message: error.message }));
     cachedTextModels = [PREFERRED_MODEL];
@@ -186,7 +190,7 @@ app.post('/api/generate', optionalAuth, generationRateLimit, [
   const selectedTone = aiTone || 'Professional';
   const fullPrompt = `You are ${selectedPersona}. Use a ${selectedTone} tone. Create a ${contentType} of ${outputLength.toLowerCase()} length. User request: ${prompt}`;
   const orderedModels = await loadTextModels();
-  const modelsToTry = [...new Set([workingModel, ...orderedModels].filter(Boolean))];
+  const modelsToTry = [...new Set([workingModel, ...orderedModels].filter(Boolean))].slice(0, MAX_MODEL_ATTEMPTS);
   let aiResult;
   let reservationId;
   let credits;
@@ -215,14 +219,14 @@ app.post('/api/generate', optionalAuth, generationRateLimit, [
 
     for (const modelName of modelsToTry) {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
           body: JSON.stringify({
             contents: [{ parts: [{ text: fullPrompt }] }],
             generationConfig: { maxOutputTokens: OUTPUT_TOKENS[outputLength], temperature }
           }),
-          signal: AbortSignal.timeout(30000)
+          signal: AbortSignal.timeout(MODEL_REQUEST_TIMEOUT_MS)
         });
         const result = await response.json();
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
