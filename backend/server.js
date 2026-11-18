@@ -14,7 +14,7 @@ import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
 import adminRoutes from './routes/admin.js';
 import { optionalAuth } from './utils/auth.js';
-import { applyCreditChange, refundGenerationReservation } from './utils/credits.js';
+import { applyCreditChange, reconcilePendingGenerationReservations, refundGenerationReservation } from './utils/credits.js';
 import { ApiError, asyncHandler, errorHandler, validateRequest } from './utils/http.js';
 
 dotenv.config();
@@ -66,7 +66,35 @@ app.use('/api/admin', adminRoutes);
 
 if (mongoUri) {
   mongoose.connect(mongoUri)
-    .then(() => console.info(JSON.stringify({ level: 'info', event: 'database_connected' })))
+    .then(() => {
+      console.info(JSON.stringify({ level: 'info', event: 'database_connected' }));
+      let reconciliationRunning = false;
+      const reconcile = async () => {
+        if (reconciliationRunning) return;
+        reconciliationRunning = true;
+        try {
+          const result = await reconcilePendingGenerationReservations();
+          if (result.scanned > 0) {
+            console.info(JSON.stringify({
+              level: 'info',
+              event: 'generation_reservations_reconciled',
+              ...result
+            }));
+          }
+        } catch (error) {
+          console.error(JSON.stringify({
+            level: 'error',
+            event: 'generation_reservation_reconciliation_failed',
+            error: error.name
+          }));
+        } finally {
+          reconciliationRunning = false;
+        }
+      };
+      void reconcile();
+      const reconciliationTimer = setInterval(reconcile, 60 * 1000);
+      reconciliationTimer.unref();
+    })
     .catch((error) => console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name })));
 } else {
   console.warn(JSON.stringify({ level: 'warn', event: 'database_configuration_missing', message: 'Set MONGO_URI or MONGODB_URI.' }));
