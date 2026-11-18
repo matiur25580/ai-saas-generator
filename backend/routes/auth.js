@@ -39,6 +39,11 @@ function cookieOptions() {
   };
 }
 
+function clearCookieOptions() {
+  const { maxAge, ...options } = cookieOptions();
+  return options;
+}
+
 async function createSession(user, res) {
   const secret = jwtSecret();
   const accessToken = jwt.sign({ id: user._id.toString(), type: 'access' }, secret, { expiresIn: '15m' });
@@ -237,21 +242,21 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   try {
     decoded = jwt.verify(token, jwtSecret());
   } catch {
-    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_INVALID');
   }
   if (decoded.type !== 'refresh') {
-    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_INVALID');
   }
   const user = await User.findOne({ _id: decoded.id, refreshTokenHash: hashToken(token) });
   if (!user) {
-    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_REVOKED');
   }
   const rotated = await rotateRefreshSession({ userModel: User, userId: user._id, currentRefreshToken: token, secret: jwtSecret() });
   if (!rotated) {
-    res.clearCookie(REFRESH_COOKIE, cookieOptions());
+    res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
     throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_ALREADY_USED');
   }
   res.cookie(REFRESH_COOKIE, rotated.refreshToken, cookieOptions());
@@ -269,7 +274,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
       // Clear invalid or expired cookies as well.
     }
   }
-  res.clearCookie(REFRESH_COOKIE, cookieOptions());
+  res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
   res.json({ success: true, data: { message: 'Logged out successfully.' }, message: 'Logged out successfully.' });
 }));
 
