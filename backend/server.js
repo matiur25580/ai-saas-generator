@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import { body } from 'express-validator';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import Content from './models/Content.js';
+import CreditTransaction from './models/CreditTransaction.js';
 import User from './models/User.js';
 import authRoutes from './routes/auth.js';
 import contentRoutes from './routes/content.js';
@@ -153,81 +154,116 @@ app.post('/api/generate', optionalAuth, generationRateLimit, [
   if (!process.env.GEMINI_API_KEY) {
     throw new ApiError(503, 'AI generation is temporarily unavailable. Please try again later.', 'AI_NOT_CONFIGURED');
   }
-  if (req.userId) {
-    const user = await User.findById(req.userId).select('credits');
-    if (!user) throw new ApiError(401, 'Your session has expired. Please log in again.', 'AUTH_INVALID');
-    if (user.credits < 1) throw new ApiError(400, 'You have no credits remaining.', 'INSUFFICIENT_CREDITS');
-  }
-
   const selectedPersona = persona || 'Expert Copywriter';
   const selectedTone = aiTone || 'Professional';
   const fullPrompt = `You are ${selectedPersona}. Use a ${selectedTone} tone. Create a ${contentType} of ${outputLength.toLowerCase()} length. User request: ${prompt}`;
   const orderedModels = await loadTextModels();
   const modelsToTry = [...new Set([workingModel, ...orderedModels].filter(Boolean))];
   let aiResult;
-
-  for (const modelName of modelsToTry) {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: fullPrompt }] }],
-          generationConfig: { maxOutputTokens: OUTPUT_TOKENS[outputLength], temperature }
-        }),
-        signal: AbortSignal.timeout(30000)
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      aiResult = result.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text;
-      if (!aiResult) throw new Error('Empty text response');
-      workingModel = modelName;
-      cachedTextModels = [...new Set([modelName, ...orderedModels])];
-      break;
-    } catch (error) {
-      console.error(JSON.stringify({ level: 'warn', event: 'gemini_model_failed', model: modelName, message: error.message }));
-    }
-  }
-
-  if (!aiResult) {
-    throw new ApiError(502, 'AI generation is temporarily unavailable. Please try again shortly.', 'AI_UNAVAILABLE');
-  }
-
-  let newContent;
+  let reservationId;
   let credits;
-  if (req.userId) {
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const user = await applyCreditChange({
-          userId: req.userId,
-          amount: -1,
-          reason: 'AI content generation',
-          source: 'generation',
-          session
+
+  try {
+    if (req.userId) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const reservation = await applyCreditChange({
+            userId: req.userId,
+            amount: -1,
+            reason: 'AI generation credit reservation',
+            source: 'generation',
+            metadata: { status: 'reserved' },
+            session,
+            includeTransaction: true
+          });
+          reservationId = reservation.transaction._id;
+          credits = reservation.user.credits;
         });
-        [newContent] = await Content.create([{
-          userId: req.userId,
-          prompt,
-          persona: selectedPersona,
-          tone: selectedTone,
-          contentType,
-          outputLength,
-          response: aiResult
-        }], { session });
-        credits = user.credits;
-      });
-    } finally {
-      await session.endSession();
+      } finally {
+        await session.endSession();
+      }
     }
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: fullPrompt }] }],
+            generationConfig: { maxOutputTokens: OUTPUT_TOKENS[outputLength], temperature }
+          }),
+          signal: AbortSignal.timeout(30000)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        aiResult = result.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text;
+        if (!aiResult) throw new Error('Empty text response');
+        workingModel = modelName;
+        cachedTextModels = [...new Set([modelName, ...orderedModels])];
+        break;
+      } catch (error) {
+        console.error(JSON.stringify({ level: 'warn', event: 'gemini_model_failed', model: modelName, message: error.message }));
+      }
+    }
+
+    if (!aiResult) {
+      throw new ApiError(502, 'AI generation is temporarily unavailable. Please try again shortly.', 'AI_UNAVAILABLE');
+    }
+
+    let newContent;
+    if (req.userId) {
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const reservation = await CreditTransaction.findOneAndUpdate(
+            { _id: reservationId, userId: req.userId, 'metadata.status': 'reserved' },
+            { $set: { 'metadata.status': 'completed' } },
+            { new: true, session }
+          );
+          if (!reservation) {
+            throw new ApiError(409, 'Generation credit reservation could not be completed.', 'CREDIT_RESERVATION_CONFLICT');
+          }
+          [newContent] = await Content.create([{
+            userId: req.userId,
+            prompt,
+            persona: selectedPersona,
+            tone: selectedTone,
+            contentType,
+            outputLength,
+            response: aiResult
+          }], { session });
+        });
+      } finally {
+        await session.endSession();
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { result: aiResult, id: newContent?._id || null, credits },
+      result: aiResult,
+      id: newContent?._id || null,
+      ...(credits === undefined ? {} : { credits })
+    });
+  } catch (error) {
+    if (reservationId) {
+      try {
+        const { refundGenerationReservation } = await import('./utils/credits.js');
+        await refundGenerationReservation({ userId: req.userId, reservationId });
+      } catch (refundError) {
+        console.error(JSON.stringify({
+          level: 'error',
+          event: 'generation_credit_refund_failed',
+          userId: String(req.userId),
+          reservationId: String(reservationId),
+          error: refundError.name
+        }));
+      }
+    }
+    throw error;
   }
-  res.json({
-    success: true,
-    data: { result: aiResult, id: newContent?._id || null, credits },
-    result: aiResult,
-    id: newContent?._id || null,
-    ...(credits === undefined ? {} : { credits })
-  });
 }));
 
 app.use((req, res, next) => next(new ApiError(404, 'API endpoint not found.', 'NOT_FOUND')));
