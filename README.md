@@ -69,7 +69,7 @@ Browser (React + Vite)
 	└── Static frontend assets (Vercel)
 ```
 
-Frontend state and guest history stay in the browser. Signed-in content, account balances, OTP state, and credit transactions are persisted in MongoDB. Authenticated generation debits a credit and saves its content/ledger entry in one transaction.
+Frontend state and guest history stay in the browser. Signed-in content, account balances, OTP state, and credit transactions are persisted in MongoDB. Authenticated generation reserves one credit before calling Gemini, preventing concurrent requests from spending the same remaining balance. Successful output and reservation settlement are committed with the saved content in one transaction; failed provider or persistence attempts trigger a transactional credit refund. Reservations left pending by an abrupt process termination require operational reconciliation.
 
 ## Production Environment
 
@@ -115,14 +115,14 @@ Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after 
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/generate` | Generate text. Accepts `{ prompt, persona?, aiTone?, contentType?, outputLength?, temperature? }`; returns `AI_UNAVAILABLE` instead of placeholder output if all models fail. Signed-in generations are saved and debit one credit. |
+| `POST` | `/api/generate` | Generate text. Accepts `{ prompt, persona?, aiTone?, contentType?, outputLength?, temperature? }`; returns `AI_UNAVAILABLE` instead of placeholder output if all models fail. Signed-in generations reserve one credit before provider calls. Successful generations settle the reservation with the saved content; failed attempts refund it transactionally. |
 | `POST` | `/api/content` | Authenticated content save and one-credit debit. Requires `{ prompt, response, persona?, tone?, bookmarked? }`. |
 | `GET` | `/api/content?page=1&search=...` | Authenticated, paginated content history. |
 | `PUT` | `/api/content/:id` | Update the caller's content record. |
 | `DELETE` | `/api/content/:id` | Delete the caller's content record. |
 | `GET` | `/api/content/transactions?page=1` | Authenticated credit ledger, newest first. Positive amounts are grants; negative amounts are debits. |
 
-Authenticated routes require `Authorization: Bearer <access-token>`. Credit balance changes and their ledger records are committed in one MongoDB transaction.
+Authenticated routes require `Authorization: Bearer <access-token>`. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; operators should reconcile pending reservation entries.
 
 ### Admin
 
