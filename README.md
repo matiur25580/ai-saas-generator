@@ -69,7 +69,7 @@ Browser (React + Vite)
 	└── Static frontend assets (Vercel)
 ```
 
-Frontend state and guest history stay in the browser. Signed-in content, account balances, OTP state, and credit transactions are persisted in MongoDB. Authenticated generation reserves one credit before calling Gemini, preventing concurrent requests from spending the same remaining balance. Successful output and reservation settlement are committed with the saved content in one transaction; failed provider or persistence attempts trigger a transactional credit refund. Reservations left pending by an abrupt process termination require operational reconciliation.
+Frontend state and guest history stay in the browser. Signed-in content, account balances, OTP state, and credit transactions are persisted in MongoDB. Authenticated generation reserves one credit before calling Gemini, preventing concurrent requests from spending the same remaining balance. Successful output and reservation settlement are committed with the saved content in one transaction; failed provider or persistence attempts trigger a transactional credit refund. Reservations left pending by an abrupt process termination are automatically scanned every minute after MongoDB connects and refunded when older than 30 minutes. Refunds are conditional and transactional, so completed or already-refunded reservations are not credited twice. The reconciliation scan is bounded to 100 reservations per pass; failed records are retried on a later pass.
 
 ## Production Environment
 
@@ -122,7 +122,7 @@ Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after 
 | `DELETE` | `/api/content/:id` | Delete the caller's content record. |
 | `GET` | `/api/content/transactions?page=1` | Authenticated credit ledger, newest first. Positive amounts are grants; negative amounts are debits. |
 
-Authenticated routes require `Authorization: Bearer <access-token>`. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; operators should reconcile pending reservation entries.
+Authenticated routes require `Authorization: Bearer <access-token>`. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; the backend automatically scans for reservations older than 30 minutes every minute and retries failed refunds. Each scan processes at most 100 records.
 
 ### Admin
 
@@ -137,7 +137,7 @@ OTP requests are limited to 3 per email and 15 per IP per 10 minutes; generation
 
 ```bash
 cd frontend && VITE_BACKEND_URL=http://localhost:5000 npm run build
-cd ../backend && npm audit && npm start
+cd ../backend && npm test && npm audit && npm start
 ```
 
-The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
+The backend unit suite includes HTTP error-contract, refresh-token rotation, and generation-reservation reconciliation tests. It does not replace MongoDB replica-set integration tests for real credit reservation/refund transactions. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
