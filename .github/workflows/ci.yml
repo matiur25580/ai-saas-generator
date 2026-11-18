@@ -29,6 +29,18 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MONGODB_TEST_URI: mongodb://localhost:27017/ai_saas_test?replicaSet=rs0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,7 +50,11 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
         working-directory: backend
+      - name: Initialize MongoDB replica set
+        run: docker exec "${{ job.services.mongodb.id }}" mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]})"
       - run: node --check server.js
+        working-directory: backend
+      - run: node --check utils/credits.js
         working-directory: backend
       - run: npm test
         working-directory: backend
