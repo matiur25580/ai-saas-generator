@@ -24,21 +24,28 @@ export function errorHandler(error, req, res, next) {
   const isDuplicate = error.code === 11000;
   const isValidation = error.name === 'ValidationError';
   const isInvalidId = error.name === 'CastError';
+  const isMalformedJson = error.type === 'entity.parse.failed';
+  const isPayloadTooLarge = error.type === 'entity.too.large';
   const isHttpError = Number.isInteger(error.status) && error.status >= 400 && error.status <= 599;
   const status = isDuplicate ? 409
-    : isValidation || isInvalidId ? 400
-      : isHttpError ? error.status : 500;
+    : isValidation || isInvalidId || isMalformedJson ? 400
+      : isPayloadTooLarge ? 413
+        : isHttpError ? error.status : 500;
   const code = isDuplicate ? 'RESOURCE_CONFLICT'
     : isValidation ? 'VALIDATION_ERROR'
       : isInvalidId ? 'INVALID_ID'
-        : typeof error.code === 'string' ? error.code
-          : status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR';
+        : isMalformedJson ? 'INVALID_JSON'
+          : isPayloadTooLarge ? 'PAYLOAD_TOO_LARGE'
+            : typeof error.code === 'string' ? error.code
+              : status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR';
   const message = status >= 500 && code === 'INTERNAL_ERROR'
     ? 'An unexpected error occurred. Please try again later.'
     : isDuplicate ? 'A record with these details already exists.'
       : isValidation ? 'The submitted data is invalid.'
         : isInvalidId ? 'The requested identifier is invalid.'
-          : error.message;
+          : isMalformedJson ? 'Request body must contain valid JSON.'
+            : isPayloadTooLarge ? 'Request body exceeds the allowed size.'
+              : error.message;
   console.error(JSON.stringify({
     level: 'error',
     timestamp: new Date().toISOString(),
