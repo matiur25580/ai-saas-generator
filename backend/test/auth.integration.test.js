@@ -36,7 +36,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     if (url.hostname === 'api.brevo.com') {
       const payload = JSON.parse(init.body);
       const deliveredEmail = payload.to[0].email.toLowerCase();
-      const deliveredMatch = payload.htmlContent.match(/>(\\d{6})<\\/div>/);
+      const deliveredMatch = payload.htmlContent.match(/>(\d{6})<\/div>/);
       if (deliveredMatch) deliveredOtps.set(deliveredEmail, deliveredMatch[1]);
       if (deliveredEmail === email) deliveredHtml = payload.htmlContent;
       return new Response(JSON.stringify({ messageId: 'integration-test-message' }), {
@@ -122,7 +122,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       const resetSend = await post('/api/auth/send-otp', { email, purpose: 'reset' });
       assert.equal(resetSend.status, 202);
       const resetOtp = deliveredOtps.get(email);
-      assert.match(resetOtp || '', /^\\d{6}$/);
+      assert.match(resetOtp || '', /^\d{6}$/);
 
       const resetResponse = await post('/api/auth/reset-password', {
         email, otp: resetOtp, newPassword: 'A-new-strong-test-password-456'
