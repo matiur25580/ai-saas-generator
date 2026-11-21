@@ -52,6 +52,21 @@ function clearCookieOptions() {
   return options;
 }
 
+function csrfCookieOptions() {
+  return { ...cookieOptions(), httpOnly: false };
+}
+
+function csrfProtection(req, res, next) {
+  const cookieToken = req.cookies?.csrfToken || '';
+  const headerToken = req.headers['x-csrf-token'] || '';
+  const left = Buffer.from(String(cookieToken));
+  const right = Buffer.from(String(headerToken));
+  if (!left.length || left.length !== right.length || !timingSafeEqual(left, right)) {
+    return next(new ApiError(403, 'CSRF validation failed.', 'CSRF_INVALID'));
+  }
+  next();
+}
+
 async function createSession(user, res) {
   const secret = jwtSecret();
   const tokenVersion = Number(user.tokenVersion ?? 0);
@@ -64,7 +79,9 @@ async function createSession(user, res) {
   user.refreshTokenHash = hashToken(refreshToken);
   await user.save();
   res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions());
-  return accessToken;
+  const csrfToken = randomUUID() + randomUUID();
+  res.cookie('csrfToken', csrfToken, csrfCookieOptions());
+  return { accessToken, csrfToken };
 }
 
 const otpIpRateLimit = rateLimit({
@@ -253,12 +270,18 @@ router.post('/login', loginRateLimit, [
   if (!user || !user.isActive || !(await bcrypt.compare(password, user.password))) {
     throw new ApiError(401, 'Invalid email or password.', 'INVALID_CREDENTIALS');
   }
-  const token = await createSession(user, res);
+  const session = await createSession(user, res);
   const account = { name: user.name, email: user.email, credits: user.credits, role: user.role };
-  res.json({ success: true, data: { token, user: account }, token, user: account });
+  res.json({ success: true, data: { token: session.accessToken, user: account, csrfToken: session.csrfToken }, token: session.accessToken, user: account, csrfToken: session.csrfToken });
 }));
 
-router.post('/refresh', asyncHandler(async (req, res) => {
+router.get('/csrf', (req, res) => {
+  const csrfToken = req.cookies?.csrfToken || randomUUID() + randomUUID();
+  res.cookie('csrfToken', csrfToken, csrfCookieOptions());
+  res.json({ success: true, data: { csrfToken }, csrfToken });
+});
+
+router.post('/refresh', csrfProtection, asyncHandler(async (req, res) => {
   const token = req.cookies?.[REFRESH_COOKIE];
   if (!token) throw new ApiError(401, 'Please log in again.', 'REFRESH_TOKEN_MISSING');
   let decoded;
@@ -295,10 +318,11 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
   res.cookie(REFRESH_COOKIE, rotated.refreshToken, cookieOptions());
   const account = { name: rotated.user.name, email: rotated.user.email, credits: rotated.user.credits, role: rotated.user.role };
-  res.json({ success: true, data: { token: rotated.accessToken, user: account }, token: rotated.accessToken, user: account });
+  const csrfToken = req.cookies?.csrfToken;
+  res.json({ success: true, data: { token: rotated.accessToken, user: account, csrfToken }, token: rotated.accessToken, user: account, csrfToken });
 }));
 
-router.post('/logout', asyncHandler(async (req, res) => {
+router.post('/logout', csrfProtection, asyncHandler(async (req, res) => {
   const candidates = [];
   const refreshToken = req.cookies?.[REFRESH_COOKIE];
   const authorization = req.headers.authorization || '';
@@ -340,6 +364,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
   }
 
   res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
+  res.clearCookie('csrfToken', { ...clearCookieOptions(), httpOnly: false });
   res.json({ success: true, data: { message: 'Logged out successfully.' }, message: 'Logged out successfully.' });
 }));
 
