@@ -21,7 +21,6 @@ const genericOtpResponse = {
   success: true,
   data: { message: 'If the account is eligible, a verification code will be sent.' },
   message: 'If the account is eligible, a verification code will be sent.',
-  emailSent: true
 };
 
 function jwtSecret() {
@@ -86,7 +85,7 @@ async function createSession(user, res) {
 
 const otpIpRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
-  limit: 15,
+  limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
   store: new MongoRateLimitStore({ prefix: 'auth:otp:ip:' }),
