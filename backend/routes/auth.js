@@ -11,6 +11,7 @@ import CreditTransaction from '../models/CreditTransaction.js';
 import { rotateRefreshSession } from '../utils/session.js';
 import { sendOtpEmail } from '../utils/sendEmail.js';
 import { ApiError, asyncHandler, validateRequest } from '../utils/http.js';
+import MongoRateLimitStore from '../utils/MongoRateLimitStore.js';
 
 const router = express.Router();
 const OTP_LIFETIME_MS = 3 * 60 * 1000;
@@ -59,6 +60,7 @@ const otpIpRateLimit = rateLimit({
   limit: 15,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'auth:otp:ip:' }),
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many verification requests from this network. Please try again in 10 minutes.',
@@ -71,7 +73,8 @@ const otpEmailRateLimit = rateLimit({
   limit: 3,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `email:${String(req.body?.email || '').trim().toLowerCase()}`,
+  store: new MongoRateLimitStore({ prefix: 'auth:otp:email:' }),
+  keyGenerator: (req) => `email:${createHash('sha256').update(String(req.body?.email || '').trim().toLowerCase()).digest('hex')}`,
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many OTP requests. Please try again in 10 minutes.',
@@ -84,6 +87,7 @@ const loginRateLimit = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'auth:login:ip:' }),
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many login attempts. Please try again in 15 minutes.',
