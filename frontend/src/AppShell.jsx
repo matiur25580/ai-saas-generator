@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import AuthModal from './components/AuthDialog';
 import ErrorBoundary from './components/ErrorBoundary';
-import { apiFetch, refreshSession, setAccessToken, clearAccessToken } from './api';
+import { apiFetch, refreshSession, setAccessToken, setCsrfToken, clearAccessToken } from './api';
 
 const Landing = lazy(() => import('./pages/Landing'));
 const Studio = lazy(() => import('./components/Studio'));
@@ -41,8 +41,9 @@ export default function AppShell() {
     return () => { active = false; };
   }, []);
 
-  const acceptLogin = (account, token, destination = 'studio') => {
+  const acceptLogin = (account, token, csrfToken, destination = 'studio') => {
     setAccessToken(token);
+    setCsrfToken(csrfToken);
     setUser(account.email);
     setCredits(account.credits);
     setAuthOpen(false);
@@ -93,7 +94,7 @@ export default function AppShell() {
               onHome={() => setView('landing')}
             />
           )}
-          {view === 'admin' && <Admin onBack={() => setView('studio')} onLogin={(account, token) => acceptLogin(account, token, 'admin')} />}
+          {view === 'admin' && <Admin onBack={() => setView('studio')} onLogin={(account, token, csrfToken) => acceptLogin(account, token, csrfToken, 'admin')} />}
         </Suspense>
         {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onLogin={acceptLogin} />}
       </div>
