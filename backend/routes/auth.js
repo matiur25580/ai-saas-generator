@@ -299,37 +299,46 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {
+  const candidates = [];
   const refreshToken = req.cookies?.[REFRESH_COOKIE];
   const authorization = req.headers.authorization || '';
-  const [, accessToken] = authorization.split(' ');
-  let identity;
+  const [scheme, accessToken] = authorization.split(' ');
+
+  if (scheme === 'Bearer' && accessToken) {
+    try {
+      const decoded = jwt.verify(accessToken, jwtSecret(), { algorithms: ['HS256'] });
+      if (decoded.type === 'access' && typeof decoded.id === 'string') {
+        candidates.push({ id: decoded.id, ver: Number(decoded.ver ?? 0) });
+      }
+    } catch { /* Continue with the refresh cookie if available. */ }
+  }
+
   if (refreshToken) {
     try {
       const decoded = jwt.verify(refreshToken, jwtSecret(), { algorithms: ['HS256'] });
       if (decoded.type === 'refresh' && typeof decoded.id === 'string') {
-        identity = { id: decoded.id, ver: Number(decoded.ver ?? 0), refreshHash: hashToken(refreshToken) };
+        candidates.push({
+          id: decoded.id,
+          ver: Number(decoded.ver ?? 0),
+          refreshHash: hashToken(refreshToken)
+        });
       }
     } catch { /* Expired cookies are still cleared below. */ }
   }
-  if (!identity && accessToken) {
-    try {
-      const decoded = jwt.verify(accessToken, jwtSecret(), { algorithms: ['HS256'] });
-      if (decoded.type === 'access' && typeof decoded.id === 'string') {
-        identity = { id: decoded.id, ver: Number(decoded.ver ?? 0) };
-      }
-    } catch { /* Invalid access tokens are ignored for idempotent logout. */ }
-  }
-  if (identity) {
+
+  for (const identity of candidates) {
     const versionCriteria = identity.ver === 0
       ? { $or: [{ tokenVersion: 0 }, { tokenVersion: { $exists: false } }] }
       : { tokenVersion: identity.ver };
     const criteria = { _id: identity.id, isActive: { $ne: false }, ...versionCriteria };
     if (identity.refreshHash) criteria.refreshTokenHash = identity.refreshHash;
-    await User.updateOne(criteria, {
+    const result = await User.updateOne(criteria, {
       $inc: { tokenVersion: 1 },
       $set: { refreshTokenHash: null }
     });
+    if (result.matchedCount > 0) break;
   }
+
   res.clearCookie(REFRESH_COOKIE, clearCookieOptions());
   res.json({ success: true, data: { message: 'Logged out successfully.' }, message: 'Logged out successfully.' });
 }));
