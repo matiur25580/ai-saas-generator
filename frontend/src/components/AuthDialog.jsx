@@ -53,7 +53,7 @@ export default function AuthDialog({ onClose, onLogin }) {
     event.preventDefault();
     run(async () => {
       const data = await request('/api/auth/login', { email, password });
-      onLogin(data.user, data.token);
+      onLogin(data.user, data.token, data.csrfToken);
     });
   };
 
