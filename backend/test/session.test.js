@@ -47,3 +47,29 @@ test('only one concurrent request can rotate the same refresh token', async () =
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(results.filter((result) => result === null).length, 1);
 });
+
+test('refresh rotation is bound to the current account token version', async () => {
+  const oldToken = 'versioned-refresh-token';
+  const user = { _id: 'user-versioned', tokenVersion: 3 };
+  let receivedFilter;
+  const userModel = {
+    async findOneAndUpdate(filter) {
+      receivedFilter = filter;
+      return filter.tokenVersion === 3 ? user : null;
+    }
+  };
+
+  const valid = await rotateRefreshSession({
+    userModel, userId: user._id, currentRefreshToken: oldToken,
+    secret: 'test-secret-with-enough-entropy', tokenVersion: 3
+  });
+  assert.ok(valid);
+  assert.equal(jwt.verify(valid.accessToken, 'test-secret-with-enough-entropy').ver, 3);
+  assert.equal(receivedFilter.tokenVersion, 3);
+
+  const stale = await rotateRefreshSession({
+    userModel, userId: user._id, currentRefreshToken: oldToken,
+    secret: 'test-secret-with-enough-entropy', tokenVersion: 2
+  });
+  assert.equal(stale, null);
+});

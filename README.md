@@ -16,7 +16,9 @@ A genuine screenshot gallery is being prepared. The capture checklist and safe-d
 ## ✨ Features
 - 🔐 JWT Auth + 6-digit OTP verification
 - 🤖 Live Gemini text generation with format, persona, tone, length, and temperature controls
-- 🔐 HMAC-protected, Brevo-delivered signup/reset OTP, lockout, layered rate limits, and rotating HttpOnly refresh cookies
+- 🔐 HMAC-protected, Brevo-delivered signup/reset OTP, enumeration-resistant responses, lockout, MongoDB-shared rate limits, and rotating HttpOnly refresh cookies
+- 🛡️ Database-checked access-token versions; logout, password reset, and account deactivation revoke existing access sessions immediately
+- 🔒 Access tokens stay in frontend memory; refresh/logout require a CSRF token and the refresh cookie is HttpOnly
 - 📚 Account-backed generation history, search, pagination, bookmarks, and delete
 - 💳 Transactional credit ledger for starter-credit grants, generation debits, and admin grants
 - 📄 Copy, Markdown/text download, and safe browser print-to-PDF
@@ -39,8 +41,8 @@ Requirements: Node.js 20.19+ and MongoDB Atlas (replica set/transaction support)
 ```bash
 git clone https://github.com/matiur25580/ai-saas-generator.git
 cd ai-saas-generator
-npm --prefix backend install
-npm --prefix frontend install
+npm --prefix backend ci
+npm --prefix frontend ci
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
@@ -78,8 +80,9 @@ Set these variables in the backend deployment. Production startup fails fast if 
 - `MONGO_URI`: MongoDB Atlas connection string. Atlas must support replica-set transactions for credit changes.
 - `JWT_SECRET`: long, random secret used to sign access and refresh tokens.
 - `GEMINI_API_KEY`: Google AI API key. The server sends it in the `x-goog-api-key` header, prioritizes `gemini-3.8-flash` when listed, and limits each generation to three text-capable Flash model attempts (30 seconds per attempt).
-- `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. These are required for signup/reset OTP email, but are optional for backend startup; OTP requests return `503 EMAIL_NOT_CONFIGURED` until configured. Gmail SMTP is not used.
+- `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. These are required for signup/reset OTP delivery but optional for backend startup. OTP endpoints intentionally return the same generic `202` response for eligible and ineligible accounts; delivery errors are logged without exposing account existence. Gmail SMTP is not used.
 - `FRONTEND_URL`: the exact HTTPS frontend origin. If omitted in production, the server uses `https://ai-saas-generator.vercel.app` as its default allowlisted origin. Set this variable when using a custom frontend domain. CORS does not accept wildcard origins.
+- `TRUST_PROXY_HOPS`: trusted reverse-proxy depth used to derive client IPs for shared rate limits. Defaults to `1` in production and `0` elsewhere; set it to match the hosting proxy topology.
 - `NODE_ENV=production` and `PORT` as supplied by the host.
 
 Set `VITE_BACKEND_URL` in the frontend deployment to the backend origin. A production build emits a warning when this value is missing. When using a custom frontend domain, `FRONTEND_URL` must exactly match the deployed frontend origin.
@@ -101,12 +104,13 @@ All API responses use a `success` boolean and a `data` payload or structured `er
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/auth/send-otp` | Send signup/reset OTP. Limited to 3 requests per email per 10 minutes. Requires `{ email, purpose, name? }`. |
+| `POST` | `/api/auth/send-otp` | Send signup/reset OTP. Limited to 3 per email and 30 per IP per 10 minutes. Returns the same generic response for existing and unknown accounts. Requires `{ email, purpose, name? }`. |
 | `POST` | `/api/auth/register` | Verify signup OTP and create account. Requires `{ name, email, password, otp }`; password is 8-128 characters. |
 | `POST` | `/api/auth/login` | Login, limited to 5 attempts per IP per 15 minutes. Returns a 15-minute access token and sets a rotating 7-day HttpOnly refresh cookie. |
-| `POST` | `/api/auth/refresh` | Rotate the refresh cookie and return a new access token. Send cookies with credentials enabled. |
-| `POST` | `/api/auth/logout` | Revoke the current refresh token and clear its cookie. |
-| `POST` | `/api/auth/reset-password` | Verify reset OTP and set a new password. Requires `{ email, otp, newPassword }`. |
+| `GET` | `/api/auth/csrf` | Issue or retrieve the CSRF token used by browser sessions. Send cookies with credentials enabled. |
+| `POST` | `/api/auth/refresh` | Rotate the refresh cookie and return a new access token. Requires the `X-CSRF-Token` header and cookies with credentials enabled. |
+| `POST` | `/api/auth/logout` | Increment the account token version to revoke all access tokens, clear the refresh/CSRF cookies, and require `X-CSRF-Token`. |
+| `POST` | `/api/auth/reset-password` | Verify reset OTP and set a new password in a transaction; revokes all existing access and refresh sessions. Requires `{ email, otp, newPassword }`. |
 | `GET` | `/api/health` | Readiness check; returns 503 with `DATABASE_UNAVAILABLE` until MongoDB connects. |
 
 Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after three minutes.
@@ -122,7 +126,18 @@ Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after 
 | `DELETE` | `/api/content/:id` | Delete the caller's content record. |
 | `GET` | `/api/content/transactions?page=1` | Authenticated credit ledger, newest first. Positive amounts are grants; negative amounts are debits. |
 
-Authenticated routes require `Authorization: Bearer <access-token>`. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; the backend automatically scans for reservations older than 30 minutes every minute and retries failed refunds. Each scan processes at most 100 records.
+Authenticated routes require `Authorization: Bearer <access-token>`. The frontend keeps access tokens in memory rather than local storage; the HttpOnly refresh cookie is rotated with a CSRF-protected request. Every protected request reloads the current account and checks its active state and token version. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; the backend automatically scans for reservations older than 30 minutes every minute and retries failed refunds. Each scan processes at most 100 records.
+
+### One-time administrator bootstrap
+
+Public registration always creates a `User`; clients cannot request the `Admin` role. To create the initial administrator, configure `MONGO_URI`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (16-128 characters), and optional `ADMIN_NAME` in the backend environment, then run once from the repository root:
+
+```bash
+cd backend
+node scripts/bootstrap-admin.js
+```
+
+The command transactionally creates the administrator (or promotes the matching existing account), revokes any prior sessions, records the initial credit grant when creating a new account, and writes a unique one-time bootstrap marker. A second run is rejected. Keep the admin password in a secret manager; never place it in frontend variables or commit it.
 
 ### Admin
 
@@ -131,7 +146,7 @@ Authenticated routes require `Authorization: Bearer <access-token>`. Credit bala
 | `GET` | `/api/admin/stats` | Admin-only user and generation statistics. |
 | `POST` | `/api/admin/add-credits` | Admin-only manual credit grant. Requires `{ email, credits }`, where credits is an integer from 1 to 100000. |
 
-OTP requests are limited to 3 per email and 15 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. Rate limits use the in-memory express-rate-limit store. Configure a shared store before running multiple backend instances.
+OTP requests are limited to 3 per email and 30 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. All limits use atomic MongoDB-backed counters with TTL cleanup, shared across backend instances. IP and email identifiers are SHA-256 hashed before storage.
 
 ## Staging Authentication Smoke Test
 
@@ -154,4 +169,4 @@ cd frontend && VITE_BACKEND_URL=http://localhost:5000 npm run build
 cd ../backend && npm test && npm audit && npm start
 ```
 
-The backend test suite includes HTTP error-contract and refresh-token rotation tests, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection, guest generation, API-key header handling and bounded three-model failover. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
+The backend test suite includes HTTP error-contract and refresh-token rotation tests, token-version revocation, OTP enumeration/lockout and transactional signup/reset, MongoDB-shared rate-limit concurrency, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection, guest generation, API-key header handling and bounded three-model failover. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.

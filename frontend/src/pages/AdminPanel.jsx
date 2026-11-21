@@ -41,7 +41,7 @@ export default function AdminPanel({ onBack, onLogin }) {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || 'Sign in failed.');
-      onLogin(result.user, result.token);
+      onLogin(result.user, result.token, result.csrfToken);
       setNeedLogin(false);
       await loadStats();
     } catch (requestError) { setError(requestError.message || 'Could not connect to the backend.'); }

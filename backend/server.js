@@ -15,17 +15,26 @@ import contentRoutes from './routes/content.js';
 import adminRoutes from './routes/admin.js';
 import { optionalAuth } from './utils/auth.js';
 import { applyCreditChange, reconcilePendingGenerationReservations, refundGenerationReservation } from './utils/credits.js';
+import MongoRateLimitStore from './utils/MongoRateLimitStore.js';
 import { ApiError, asyncHandler, errorHandler, validateRequest } from './utils/http.js';
 
 dotenv.config();
 
 const app = express();
-app.set('trust proxy', 1);
+const trustProxyHops = process.env.TRUST_PROXY_HOPS === undefined
+  ? (process.env.NODE_ENV === 'production' ? 1 : 0)
+  : Number(process.env.TRUST_PROXY_HOPS);
+if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0 || trustProxyHops > 5) {
+  throw new Error('TRUST_PROXY_HOPS must be an integer between 0 and 5.');
+}
+app.set('trust proxy', trustProxyHops);
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
 const DEFAULT_FRONTEND_ORIGIN = 'https://ai-saas-generator.vercel.app';
 const frontendOrigin = process.env.FRONTEND_URL || (isProduction ? DEFAULT_FRONTEND_ORIGIN : undefined);
 const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+let databaseReady = false;
+let databaseReadyPromise = Promise.resolve(false);
 if (isProduction) {
   const missingConfig = [
     ['FRONTEND_URL', frontendOrigin],
@@ -59,13 +68,19 @@ app.use(morgan((tokens, req, res) => JSON.stringify({
 })));
 app.use(express.json({ limit: '20kb' }));
 app.use(cookieParser());
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || (databaseReady && mongoose.connection.readyState === 1)) return next();
+  return res.status(503).json({ success: false, error: 'Database is unavailable.', code: 'DATABASE_UNAVAILABLE' });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/admin', adminRoutes);
 
 if (mongoUri) {
-  mongoose.connect(mongoUri)
-    .then(() => {
+  databaseReadyPromise = mongoose.connect(mongoUri)
+    .then(async () => {
+      await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
+      databaseReady = true;
       console.info(JSON.stringify({ level: 'info', event: 'database_connected' }));
       let reconciliationRunning = false;
       const reconcile = async () => {
@@ -93,8 +108,12 @@ if (mongoUri) {
       void reconcile();
       const reconciliationTimer = setInterval(reconcile, 60 * 1000);
       reconciliationTimer.unref();
+      return true;
     })
-    .catch((error) => console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name })));
+    .catch((error) => {
+      console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name }));
+      return false;
+    });
 } else {
   console.warn(JSON.stringify({ level: 'warn', event: 'database_configuration_missing', message: 'Set MONGO_URI or MONGODB_URI.' }));
 }
@@ -105,7 +124,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  const databaseConnected = mongoose.connection.readyState === 1;
+  const databaseConnected = databaseReady && mongoose.connection.readyState === 1;
   if (!databaseConnected) {
     return res.status(503).json({
       success: false,
@@ -126,6 +145,7 @@ let workingModel;
 const generationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
+  store: new MongoRateLimitStore({ prefix: 'generation:' }),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId
@@ -303,4 +323,5 @@ export const server = app.listen(PORT, () => {
   console.info(JSON.stringify({ level: 'info', event: 'server_listening', port: PORT }));
 });
 
+export { databaseReadyPromise as databaseReady };
 export default app;

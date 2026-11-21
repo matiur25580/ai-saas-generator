@@ -11,44 +11,51 @@ function requireEnv(name, value) {
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
 }
 
-function cookieFrom(response) {
+function cookieFrom(response, fallbackCsrfToken) {
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('set-cookie')].filter(Boolean);
-  const rawCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('refreshToken='));
-  if (!rawCookie) throw new Error('Expected a refreshToken Set-Cookie header.');
+  const refreshCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('refreshToken='));
+  const csrfCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('csrfToken='));
+  if (!refreshCookie || (!csrfCookie && !fallbackCsrfToken)) throw new Error('Expected refreshToken and CSRF cookie state.');
 
-  const [nameValue, ...attributes] = rawCookie.split(';').map((part) => part.trim());
-  if (!nameValue.startsWith('refreshToken=') || nameValue === 'refreshToken=') {
-    throw new Error('Expected a non-empty refreshToken cookie.');
-  }
-  const normalizedAttributes = new Map(attributes.map((attribute) => {
-    const separator = attribute.indexOf('=');
-    return separator === -1
-      ? [attribute.toLowerCase(), true]
-      : [attribute.slice(0, separator).toLowerCase(), attribute.slice(separator + 1)];
-  }));
-
-  for (const requiredFlag of ['httponly', 'secure']) {
-    if (!normalizedAttributes.has(requiredFlag)) {
-      throw new Error(`Refresh cookie is missing the ${requiredFlag} flag.`);
+  const validateCookie = (raw, name, requiredHttpOnly) => {
+    const [nameValue, ...attributes] = raw.split(';').map((part) => part.trim());
+    if (!nameValue.startsWith(name + '=') || nameValue === name + '=') {
+      throw new Error(`Expected a non-empty ${name} cookie.`);
     }
-  }
-  if (String(normalizedAttributes.get('samesite') || '').toLowerCase() !== 'none') {
-    throw new Error('Refresh cookie must use SameSite=None in staging.');
-  }
-  if (normalizedAttributes.get('path') !== '/api/auth') {
-    throw new Error('Refresh cookie must be scoped to /api/auth.');
-  }
-  return nameValue;
-}
+    const flags = new Map(attributes.map((attribute) => {
+      const separator = attribute.indexOf('=');
+      return separator === -1
+        ? [attribute.toLowerCase(), true]
+        : [attribute.slice(0, separator).toLowerCase(), attribute.slice(separator + 1)];
+    }));
+    for (const flag of ['secure', 'samesite', 'path']) {
+      if (!flags.has(flag)) throw new Error(`${name} cookie is missing ${flag}.`);
+    }
+    if (requiredHttpOnly && !flags.has('httponly')) throw new Error('Refresh cookie must be HttpOnly.');
+    if (!requiredHttpOnly && flags.has('httponly')) throw new Error('CSRF cookie must be readable by the browser client.');
+    if (String(flags.get('samesite')).toLowerCase() !== 'none') throw new Error(`${name} cookie must use SameSite=None in staging.`);
+    if (flags.get('path') !== '/api/auth') throw new Error(`${name} cookie must be scoped to /api/auth.`);
+    return nameValue;
+  };
 
-async function request(path, { method = 'GET', body, cookie } = {}) {
+  const refreshPair = validateCookie(refreshCookie, 'refreshToken', true);
+  const csrfPair = csrfCookie
+    ? validateCookie(csrfCookie, 'csrfToken', false)
+    : 'csrfToken=' + fallbackCsrfToken;
+  return {
+    cookie: refreshPair + '; ' + csrfPair,
+    csrfToken: csrfPair.slice('csrfToken='.length)
+  };
+}
+async function request(path, { method = 'GET', body, cookie, csrfToken } = {}) {
   const response = await fetch(new URL(path, baseUrl), {
     method,
     headers: {
       ...(body ? { 'content-type': 'application/json' } : {}),
-      ...(cookie ? { cookie } : {})
+      ...(cookie ? { cookie } : {}),
+      ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(15_000),
@@ -95,25 +102,31 @@ try {
   if (login.response.status !== 200 || login.data?.success !== true || !(login.data?.data?.token || login.data?.token)) {
     throw new Error(`Login failed (HTTP ${login.response.status}). Check the staging test account.`);
   }
-  let refreshCookie = cookieFrom(login.response);
-  console.log('PASS: login and HttpOnly refresh cookie');
+  let sessionCookies = cookieFrom(login.response);
+  let csrfToken = login.data?.csrfToken || login.data?.data?.csrfToken || sessionCookies.csrfToken;
+  if (!csrfToken) throw new Error('Login did not return a CSRF token.');
+  console.log('PASS: login, HttpOnly refresh cookie, and CSRF cookie');
 
   const refresh = await request('/api/auth/refresh', {
     method: 'POST',
-    cookie: refreshCookie
+    cookie: sessionCookies.cookie,
+    csrfToken
   });
   if (refresh.response.status !== 200 || refresh.data?.success !== true || !(refresh.data?.data?.token || refresh.data?.token)) {
     throw new Error(`Refresh-token rotation failed (HTTP ${refresh.response.status}).`);
   }
-  const rotatedCookie = cookieFrom(refresh.response);
-  if (rotatedCookie === refreshCookie) {
+  const rotatedCookies = cookieFrom(refresh.response, csrfToken);
+  const rotatedCookie = rotatedCookies.cookie;
+  csrfToken = refresh.data?.csrfToken || refresh.data?.data?.csrfToken || rotatedCookies.csrfToken;
+  if (rotatedCookie === sessionCookies.cookie) {
     throw new Error('Refresh endpoint returned the same refresh cookie instead of rotating it.');
   }
   console.log('PASS: refresh-token rotation');
 
   const logout = await request('/api/auth/logout', {
     method: 'POST',
-    cookie: rotatedCookie
+    cookie: rotatedCookie,
+    csrfToken
   });
   if (logout.response.status !== 200 || logout.data?.success !== true) {
     throw new Error(`Logout failed (HTTP ${logout.response.status}).`);
@@ -122,7 +135,8 @@ try {
 
   const replay = await request('/api/auth/refresh', {
     method: 'POST',
-    cookie: rotatedCookie
+    cookie: rotatedCookie,
+    csrfToken
   });
   if (replay.response.status !== 401) {
     throw new Error(`Revoked refresh token was not rejected (HTTP ${replay.response.status}).`);

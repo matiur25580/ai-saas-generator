@@ -20,7 +20,9 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
   };
   const secret = 'auth-integration-test-secret-with-sufficient-entropy';
   const email = `auth-success-${new mongoose.Types.ObjectId()}@example.test`;
+  let activePassword = 'A-strong-test-password-123';
   let deliveredHtml = '';
+  const deliveredOtps = new Map();
 
   process.env.NODE_ENV = 'test';
   process.env.MONGO_URI = mongoUri;
@@ -33,7 +35,10 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     const url = new URL(typeof input === 'string' ? input : input.url);
     if (url.hostname === 'api.brevo.com') {
       const payload = JSON.parse(init.body);
-      if (payload.to[0].email === email) deliveredHtml = payload.htmlContent;
+      const deliveredEmail = payload.to[0].email.toLowerCase();
+      const deliveredMatch = payload.htmlContent.match(/>(\d{6})<\/div>/);
+      if (deliveredMatch) deliveredOtps.set(deliveredEmail, deliveredMatch[1]);
+      if (deliveredEmail === email) deliveredHtml = payload.htmlContent;
       return new Response(JSON.stringify({ messageId: 'integration-test-message' }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' }
@@ -47,28 +52,32 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     const imported = await import('../server.js');
     server = imported.server;
     if (!server.listening) await once(server, 'listening');
+    await imported.databaseReady;
     await mongoose.connection.asPromise();
 
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
-    const post = (path, body, cookie) => originalFetch(`${baseUrl}${path}`, {
+    const post = (path, body, cookie, csrf) => originalFetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(cookie ? { Cookie: cookie } : {})
+        ...(cookie ? { Cookie: cookie } : {}),
+        ...(csrf ? { 'X-CSRF-Token': csrf } : {})
       },
       body: JSON.stringify(body)
     });
-    const cookieFrom = (response) => {
+    const cookieFrom = (response, fallbackCsrfToken) => {
       const setCookie = response.headers.get('set-cookie') || '';
-      const match = setCookie.match(/refreshToken=([^;]+)/);
-      return match ? `refreshToken=${match[1]}` : null;
+      const refreshMatch = setCookie.match(/refreshToken=([^;]+)/);
+      const csrfMatch = setCookie.match(/csrfToken=([^;]+)/);
+      const csrfValue = csrfMatch?.[1] || fallbackCsrfToken;
+      return refreshMatch && csrfValue ? `refreshToken=${refreshMatch[1]}; csrfToken=${csrfValue}` : null;
     };
 
     await t.test('signup OTP is delivered, consumed once, and grants welcome credits transactionally', async () => {
       const sendResponse = await post('/api/auth/send-otp', { email, name: 'Auth Integration', purpose: 'signup' });
       const sendBody = await sendResponse.json();
-      assert.equal(sendResponse.status, 200);
-      assert.equal(sendBody.emailSent, true);
+      assert.equal(sendResponse.status, 202);
+      assert.equal(sendBody.success, true);
 
       const otpMatch = deliveredHtml.match(/>(\d{6})<\/div>/);
       assert.ok(otpMatch, 'mock email should contain the generated six-digit OTP');
@@ -90,6 +99,12 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(await CreditTransaction.countDocuments({ userId: user._id, source: 'signup', amount: 50 }), 1);
       assert.equal(await Otp.countDocuments({ email, purpose: 'signup' }), 0);
 
+      const existingSignup = await post('/api/auth/send-otp', { email, purpose: 'signup' });
+      const unknownReset = await post('/api/auth/send-otp', { email: `unknown-${new mongoose.Types.ObjectId()}@example.test`, purpose: 'reset' });
+      assert.equal(existingSignup.status, 202);
+      assert.equal(unknownReset.status, 202);
+      assert.deepEqual(await existingSignup.json(), await unknownReset.json());
+
       const replayResponse = await post('/api/auth/register', {
         name: 'Auth Integration',
         email,
@@ -99,8 +114,34 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(replayResponse.status, 400);
     });
 
+    await t.test('password reset consumes OTP transactionally and revokes existing access tokens', async () => {
+      const oldLogin = await post('/api/auth/login', { email, password: activePassword });
+      const oldLoginBody = await oldLogin.json();
+      assert.equal(oldLogin.status, 200);
+
+      const resetSend = await post('/api/auth/send-otp', { email, purpose: 'reset' });
+      assert.equal(resetSend.status, 202);
+      const resetOtp = deliveredOtps.get(email);
+      assert.match(resetOtp || '', /^\d{6}$/);
+
+      const resetResponse = await post('/api/auth/reset-password', {
+        email, otp: resetOtp, newPassword: 'A-new-strong-test-password-456'
+      });
+      assert.equal(resetResponse.status, 200);
+
+      const oldAccess = await originalFetch(`${baseUrl}/api/content/transactions`, {
+        headers: { Authorization: `Bearer ${oldLoginBody.token}` }
+      });
+      assert.equal(oldAccess.status, 401);
+      assert.equal((await oldAccess.json()).code, 'AUTH_REVOKED');
+
+      const oldPasswordLogin = await post('/api/auth/login', { email, password: activePassword });
+      assert.equal(oldPasswordLogin.status, 401);
+      activePassword = 'A-new-strong-test-password-456';
+    });
+
     await t.test('login issues an HttpOnly refresh cookie and refresh tokens are single-use', async () => {
-      const loginResponse = await post('/api/auth/login', { email, password: 'A-strong-test-password-123' });
+      const loginResponse = await post('/api/auth/login', { email, password: activePassword });
       const loginBody = await loginResponse.json();
       const initialCookie = cookieFrom(loginResponse);
 
@@ -110,41 +151,53 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.ok(initialCookie);
       assert.match(loginResponse.headers.get('set-cookie'), /HttpOnly/i);
 
-      const refreshResponse = await post('/api/auth/refresh', {}, initialCookie);
+      const csrfRejected = await post('/api/auth/refresh', {}, initialCookie);
+      assert.equal(csrfRejected.status, 403);
+
+      const refreshResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const refreshBody = await refreshResponse.json();
-      const rotatedCookie = cookieFrom(refreshResponse);
+      const rotatedCookie = cookieFrom(refreshResponse, loginBody.csrfToken);
       assert.equal(refreshResponse.status, 200);
       assert.ok(refreshBody.token);
       assert.ok(rotatedCookie);
       assert.notEqual(rotatedCookie, initialCookie);
 
-      const replayResponse = await post('/api/auth/refresh', {}, initialCookie);
+      const replayResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const replayBody = await replayResponse.json();
       assert.equal(replayResponse.status, 401);
       assert.equal(replayBody.code, 'REFRESH_TOKEN_REVOKED');
 
-      const logoutResponse = await post('/api/auth/logout', {}, rotatedCookie);
+      const logoutResponse = await post('/api/auth/logout', {}, rotatedCookie, refreshBody.csrfToken);
       const logoutBody = await logoutResponse.json();
       assert.equal(logoutResponse.status, 200);
       assert.equal(logoutBody.success, true);
 
-      const afterLogoutResponse = await post('/api/auth/refresh', {}, rotatedCookie);
+      const afterLogoutResponse = await post('/api/auth/refresh', {}, rotatedCookie, refreshBody.csrfToken);
       const afterLogoutBody = await afterLogoutResponse.json();
       assert.equal(afterLogoutResponse.status, 401);
       assert.equal(afterLogoutBody.code, 'REFRESH_TOKEN_REVOKED');
+
+      const revokedAccess = await originalFetch(`${baseUrl}/api/content/transactions`, {
+        headers: { Authorization: `Bearer ${loginBody.token}` }
+      });
+      const revokedAccessBody = await revokedAccess.json();
+      assert.equal(revokedAccess.status, 401);
+      assert.equal(revokedAccessBody.code, 'AUTH_REVOKED');
     });
 
     await t.test('five invalid OTP attempts lock the verification record', async () => {
       const lockEmail = `auth-lock-${new mongoose.Types.ObjectId()}@example.test`;
       const sendResponse = await post('/api/auth/send-otp', { email: lockEmail, purpose: 'signup' });
-      assert.equal(sendResponse.status, 200);
+      assert.equal(sendResponse.status, 202);
+      const correctOtp = deliveredOtps.get(lockEmail);
+      const wrongOtp = correctOtp === '999999' ? '000000' : '999999';
 
       for (let attempt = 1; attempt <= 5; attempt += 1) {
         const invalidResponse = await post('/api/auth/register', {
           name: 'OTP Lock Test',
           email: lockEmail,
           password: 'A-strong-test-password-123',
-          otp: '000000'
+          otp: wrongOtp
         });
         assert.equal(invalidResponse.status, attempt === 5 ? 429 : 400);
       }

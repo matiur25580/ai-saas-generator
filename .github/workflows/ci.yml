@@ -24,6 +24,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --legacy-peer-deps
         working-directory: frontend
+      - name: Report frontend dependency advisories
+        working-directory: frontend
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); for (const [name, item] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({name, severity:item.severity, range:item.range, fixAvailable:item.fixAvailable}))"
       - run: npm run build
         working-directory: frontend
   backend:
@@ -64,8 +69,13 @@ jobs:
       - name: Check staging smoke-test script syntax
         run: node --check ../scripts/staging-auth-smoke.mjs
         working-directory: backend
-      - run: node --check utils/credits.js
+      - run: node --check utils/credits.js && node --check utils/auth.js && node --check utils/session.js && node --check utils/MongoRateLimitStore.js && node --check models/RateLimit.js && node --check models/AdminBootstrap.js && node --check scripts/bootstrap-admin.js && node --check routes/auth.js
         working-directory: backend
+      - name: Report backend dependency advisories
+        working-directory: backend
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); for (const [name, item] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({name, severity:item.severity, range:item.range, fixAvailable:item.fixAvailable}))"
       - run: npm test
         working-directory: backend
       - name: Stop MongoDB
