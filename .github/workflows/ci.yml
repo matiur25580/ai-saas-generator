@@ -24,6 +24,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --legacy-peer-deps
         working-directory: frontend
+      - name: Report frontend dependency advisories
+        working-directory: frontend
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); for (const [name, item] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({name, severity:item.severity, range:item.range, fixAvailable:item.fixAvailable}))"
       - run: npm run build
         working-directory: frontend
   backend:
