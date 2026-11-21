@@ -2,6 +2,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
+import RateLimit from '../models/RateLimit.js';
 import MongoRateLimitStore from '../utils/MongoRateLimitStore.js';
 
 const mongoUri = process.env.MONGODB_TEST_URI;
@@ -11,6 +12,7 @@ let store;
 before(async () => {
   if (!enabled) return;
   await mongoose.connect(mongoUri);
+  await RateLimit.init();
   store = new MongoRateLimitStore({ prefix: 'integration:' + randomUUID() + ':' });
   store.init({ windowMs: 60_000 });
 });
