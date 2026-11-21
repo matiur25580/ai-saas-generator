@@ -70,7 +70,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       const sendResponse = await post('/api/auth/send-otp', { email, name: 'Auth Integration', purpose: 'signup' });
       const sendBody = await sendResponse.json();
       assert.equal(sendResponse.status, 202);
-      assert.equal(sendBody.emailSent, true);
+      assert.equal(sendBody.success, true);
 
       const otpMatch = deliveredHtml.match(/>(\d{6})<\/div>/);
       assert.ok(otpMatch, 'mock email should contain the generated six-digit OTP');
