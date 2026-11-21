@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import CreditTransaction from '../models/CreditTransaction.js';
+import AdminBootstrap from '../models/AdminBootstrap.js';
 
 async function bootstrapAdmin() {
   const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
@@ -16,7 +17,7 @@ async function bootstrapAdmin() {
   if (name.length < 1 || name.length > 80) throw new Error('ADMIN_NAME must be between 1 and 80 characters.');
 
   await mongoose.connect(mongoUri);
-  await Promise.all([User.init(), CreditTransaction.init()]);
+  await Promise.all([User.init(), CreditTransaction.init(), AdminBootstrap.init()]);
   const passwordHash = await bcrypt.hash(password, 12);
   const session = await mongoose.startSession();
   let outcome = 'promoted';
@@ -48,6 +49,8 @@ async function bootstrapAdmin() {
         }], { session });
         outcome = 'created';
       }
+      const admin = await User.findOne({ email }).select('_id').session(session);
+      await AdminBootstrap.create([{ key: 'initial-admin', adminId: admin._id }], { session });
     });
   } finally {
     await session.endSession();
