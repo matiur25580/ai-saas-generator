@@ -127,6 +127,17 @@ Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after 
 
 Authenticated routes require `Authorization: Bearer <access-token>`. The frontend keeps access tokens in memory rather than local storage; the HttpOnly refresh cookie is rotated with a CSRF-protected request. Every protected request reloads the current account and checks its active state and token version. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; the backend automatically scans for reservations older than 30 minutes every minute and retries failed refunds. Each scan processes at most 100 records.
 
+### One-time administrator bootstrap
+
+Public registration always creates a `User`; clients cannot request the `Admin` role. To create the initial administrator, configure `MONGO_URI`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (16-128 characters), and optional `ADMIN_NAME` in the backend environment, then run once from the repository root:
+
+```bash
+cd backend
+node scripts/bootstrap-admin.js
+```
+
+The command transactionally creates the administrator (or promotes the matching existing account), revokes any prior sessions, records the initial credit grant when creating a new account, and writes a unique one-time bootstrap marker. A second run is rejected. Keep the admin password in a secret manager; never place it in frontend variables or commit it.
+
 ### Admin
 
 | Method | Path | Purpose |
