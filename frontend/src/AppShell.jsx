@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import AuthModal from './components/AuthDialog';
 import ErrorBoundary from './components/ErrorBoundary';
-import { refreshSession } from './api';
+import { apiFetch, refreshSession, setAccessToken, clearAccessToken } from './api';
 
 const Landing = lazy(() => import('./pages/Landing'));
 const Studio = lazy(() => import('./components/Studio'));
@@ -14,7 +14,7 @@ function LoadingScreen() {
 export default function AppShell() {
   const [view, setView] = useState('landing');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-  const [user, setUser] = useState(() => localStorage.getItem('loggedInUser') || '');
+  const [user, setUser] = useState('');
   const [credits, setCredits] = useState(0);
   const [authOpen, setAuthOpen] = useState(false);
   const [sessionError, setSessionError] = useState('');
@@ -42,8 +42,7 @@ export default function AppShell() {
   }, []);
 
   const acceptLogin = (account, token, destination = 'studio') => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('loggedInUser', account.email);
+    setAccessToken(token);
     setUser(account.email);
     setCredits(account.credits);
     setAuthOpen(false);
@@ -53,9 +52,7 @@ export default function AppShell() {
 
   const signOut = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '')}/api/auth/logout`, {
-        method: 'POST', credentials: 'include'
-      });
+      const response = await apiFetch('/api/auth/logout', { method: 'POST' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'The server could not revoke this session.');
@@ -64,16 +61,14 @@ export default function AppShell() {
       setSessionError('Sign out could not be confirmed. Check your connection and try again.');
       return;
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('loggedInUser');
+    clearAccessToken();
     setUser('');
     setCredits(0);
     setView('landing');
   };
 
   const sessionExpired = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('loggedInUser');
+    clearAccessToken();
     setUser('');
     setCredits(0);
   };
