@@ -27,6 +27,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const DEFAULT_FRONTEND_ORIGIN = 'https://ai-saas-generator.vercel.app';
 const frontendOrigin = process.env.FRONTEND_URL || (isProduction ? DEFAULT_FRONTEND_ORIGIN : undefined);
 const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+let databaseReady = false;
+let databaseReadyPromise = Promise.resolve(false);
 if (isProduction) {
   const missingConfig = [
     ['FRONTEND_URL', frontendOrigin],
@@ -61,7 +63,7 @@ app.use(morgan((tokens, req, res) => JSON.stringify({
 app.use(express.json({ limit: '20kb' }));
 app.use(cookieParser());
 app.use('/api', (req, res, next) => {
-  if (req.path === '/health' || mongoose.connection.readyState === 1) return next();
+  if (req.path === '/health' || (databaseReady && mongoose.connection.readyState === 1)) return next();
   return res.status(503).json({ success: false, error: 'Database is unavailable.', code: 'DATABASE_UNAVAILABLE' });
 });
 app.use('/api/auth', authRoutes);
@@ -69,8 +71,10 @@ app.use('/api/content', contentRoutes);
 app.use('/api/admin', adminRoutes);
 
 if (mongoUri) {
-  mongoose.connect(mongoUri)
-    .then(() => {
+  databaseReadyPromise = mongoose.connect(mongoUri)
+    .then(async () => {
+      await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
+      databaseReady = true;
       console.info(JSON.stringify({ level: 'info', event: 'database_connected' }));
       let reconciliationRunning = false;
       const reconcile = async () => {
@@ -98,8 +102,12 @@ if (mongoUri) {
       void reconcile();
       const reconciliationTimer = setInterval(reconcile, 60 * 1000);
       reconciliationTimer.unref();
+      return true;
     })
-    .catch((error) => console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name })));
+    .catch((error) => {
+      console.error(JSON.stringify({ level: 'error', event: 'database_connection_failed', error: error.name }));
+      return false;
+    });
 } else {
   console.warn(JSON.stringify({ level: 'warn', event: 'database_configuration_missing', message: 'Set MONGO_URI or MONGODB_URI.' }));
 }
@@ -110,7 +118,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  const databaseConnected = mongoose.connection.readyState === 1;
+  const databaseConnected = databaseReady && mongoose.connection.readyState === 1;
   if (!databaseConnected) {
     return res.status(503).json({
       success: false,
@@ -309,4 +317,5 @@ export const server = app.listen(PORT, () => {
   console.info(JSON.stringify({ level: 'info', event: 'server_listening', port: PORT }));
 });
 
+export { databaseReadyPromise as databaseReady };
 export default app;
