@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { body } from 'express-validator';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
@@ -89,6 +89,7 @@ const otpIpRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new MongoRateLimitStore({ prefix: 'auth:otp:ip:' }),
+  keyGenerator: (req) => createHash('sha256').update(ipKeyGenerator(req.ip)).digest('hex'),
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many verification requests from this network. Please try again in 10 minutes.',
@@ -116,6 +117,7 @@ const loginRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new MongoRateLimitStore({ prefix: 'auth:login:ip:' }),
+  keyGenerator: (req) => createHash('sha256').update(ipKeyGenerator(req.ip)).digest('hex'),
   handler: (req, res) => res.status(429).json({
     success: false,
     error: 'Too many login attempts. Please try again in 15 minutes.',
@@ -154,8 +156,10 @@ async function verifyOtp(email, purpose, submittedOtp) {
         _id: record._id,
         otp: expectedHash,
         expiresAt: { $gt: now },
-        failedAttempts: { $lt: 5 },
-        $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }]
+        $and: [
+          { $or: [{ failedAttempts: { $lt: 5 } }, { failedAttempts: { $exists: false } }] },
+          { $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] }
+        ]
       },
       [
         { $set: { failedAttempts: { $add: [{ $ifNull: ['$failedAttempts', 0] }, 1] } } },
@@ -184,8 +188,10 @@ async function consumeOtpRecord(record, session) {
     _id: record._id,
     otp: record.otp,
     expiresAt: { $gt: now },
-    failedAttempts: { $lt: 5 },
-    $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }]
+    $and: [
+      { $or: [{ failedAttempts: { $lt: 5 } }, { failedAttempts: { $exists: false } }] },
+      { $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] }
+    ]
   }, { session });
   if (!consumed) {
     throw new ApiError(400, 'Invalid or expired verification code.', 'OTP_INVALID_OR_EXPIRED');
