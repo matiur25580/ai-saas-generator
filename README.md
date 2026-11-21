@@ -170,3 +170,80 @@ cd ../backend && npm test && npm audit && npm start
 ```
 
 The backend test suite includes HTTP error-contract and refresh-token rotation tests, token-version revocation, OTP enumeration/lockout and transactional signup/reset, MongoDB-shared rate-limit concurrency, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection, guest generation, API-key header handling and bounded three-model failover. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
+
+
+## Dashboard Gallery
+
+Explore 12 illustrative Draftline workspaces for the writing studio, AI generation, prompt library, documents, credits, subscriptions, account security, content history, collaboration, template performance, review and analytics. Sample metrics are for visual explanation only and do not represent live users, model usage or billing records.
+
+### 01. Writing Studio Overview
+
+Generation activity, workspace usage, credit balance and writing quality indicators.
+
+![Writing Studio Overview dashboard preview](docs/readme-dashboard-gallery/dashboard-01.svg)
+
+### 02. AI Content Generator
+
+Prompt workspace, content formats, generation history and output controls.
+
+![AI Content Generator dashboard preview](docs/readme-dashboard-gallery/dashboard-02.svg)
+
+### 03. Prompt Library
+
+Reusable prompt templates, categories, favorites and prompt performance.
+
+![Prompt Library dashboard preview](docs/readme-dashboard-gallery/dashboard-03.svg)
+
+### 04. Document Workspace
+
+Draft documents, editing status, saved versions and collaboration activity.
+
+![Document Workspace dashboard preview](docs/readme-dashboard-gallery/dashboard-04.svg)
+
+### 05. AI Usage & Credits
+
+Credit consumption, plan limits, usage trends and balance monitoring.
+
+![AI Usage & Credits dashboard preview](docs/readme-dashboard-gallery/dashboard-05.svg)
+
+### 06. Subscription & Billing
+
+Plan status, subscription renewals, invoices and billing history.
+
+![Subscription & Billing dashboard preview](docs/readme-dashboard-gallery/dashboard-06.svg)
+
+### 07. Account & Security
+
+Verified account status, active sessions, password controls and recovery.
+
+![Account & Security dashboard preview](docs/readme-dashboard-gallery/dashboard-07.svg)
+
+### 08. Content History
+
+Previous generations, saved outputs, filters and export actions.
+
+![Content History dashboard preview](docs/readme-dashboard-gallery/dashboard-08.svg)
+
+### 09. Team & Collaboration
+
+Workspace members, shared documents, invitations and access roles.
+
+![Team & Collaboration dashboard preview](docs/readme-dashboard-gallery/dashboard-09.svg)
+
+### 10. Template Performance
+
+Template usage, completion trends, content types and user feedback.
+
+![Template Performance dashboard preview](docs/readme-dashboard-gallery/dashboard-10.svg)
+
+### 11. Quality & Review
+
+Output review queue, edit rates, feedback and content quality checks.
+
+![Quality & Review dashboard preview](docs/readme-dashboard-gallery/dashboard-11.svg)
+
+### 12. Workspace Analytics
+
+Usage by feature, engagement, retention and generation trends.
+
+![Workspace Analytics dashboard preview](docs/readme-dashboard-gallery/dashboard-12.svg)
