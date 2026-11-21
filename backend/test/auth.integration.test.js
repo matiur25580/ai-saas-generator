@@ -50,18 +50,20 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     await mongoose.connection.asPromise();
 
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
-    const post = (path, body, cookie) => originalFetch(`${baseUrl}${path}`, {
+    const post = (path, body, cookie, csrf) => originalFetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(cookie ? { Cookie: cookie } : {})
+        ...(cookie ? { Cookie: cookie } : {}),
+        ...(csrf ? { 'X-CSRF-Token': csrf } : {})
       },
       body: JSON.stringify(body)
     });
     const cookieFrom = (response) => {
       const setCookie = response.headers.get('set-cookie') || '';
-      const match = setCookie.match(/refreshToken=([^;]+)/);
-      return match ? `refreshToken=${match[1]}` : null;
+      const refreshMatch = setCookie.match(/refreshToken=([^;]+)/);
+      const csrfMatch = setCookie.match(/csrfToken=([^;]+)/);
+      return refreshMatch && csrfMatch ? `refreshToken=${refreshMatch[1]}; csrfToken=${csrfMatch[1]}` : null;
     };
 
     await t.test('signup OTP is delivered, consumed once, and grants welcome credits transactionally', async () => {
@@ -116,7 +118,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.ok(initialCookie);
       assert.match(loginResponse.headers.get('set-cookie'), /HttpOnly/i);
 
-      const refreshResponse = await post('/api/auth/refresh', {}, initialCookie);
+      const refreshResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const refreshBody = await refreshResponse.json();
       const rotatedCookie = cookieFrom(refreshResponse);
       assert.equal(refreshResponse.status, 200);
@@ -129,12 +131,12 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(replayResponse.status, 401);
       assert.equal(replayBody.code, 'REFRESH_TOKEN_REVOKED');
 
-      const logoutResponse = await post('/api/auth/logout', {}, rotatedCookie);
+      const logoutResponse = await post('/api/auth/logout', {}, rotatedCookie, refreshBody.csrfToken);
       const logoutBody = await logoutResponse.json();
       assert.equal(logoutResponse.status, 200);
       assert.equal(logoutBody.success, true);
 
-      const afterLogoutResponse = await post('/api/auth/refresh', {}, rotatedCookie);
+      const afterLogoutResponse = await post('/api/auth/refresh', {}, rotatedCookie, refreshBody.csrfToken);
       const afterLogoutBody = await afterLogoutResponse.json();
       assert.equal(afterLogoutResponse.status, 401);
       assert.equal(afterLogoutBody.code, 'REFRESH_TOKEN_REVOKED');
