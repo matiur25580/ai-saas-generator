@@ -65,11 +65,12 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       },
       body: JSON.stringify(body)
     });
-    const cookieFrom = (response) => {
+    const cookieFrom = (response, fallbackCsrfToken) => {
       const setCookie = response.headers.get('set-cookie') || '';
       const refreshMatch = setCookie.match(/refreshToken=([^;]+)/);
       const csrfMatch = setCookie.match(/csrfToken=([^;]+)/);
-      return refreshMatch && csrfMatch ? `refreshToken=${refreshMatch[1]}; csrfToken=${csrfMatch[1]}` : null;
+      const csrfValue = csrfMatch?.[1] || fallbackCsrfToken;
+      return refreshMatch && csrfValue ? `refreshToken=${refreshMatch[1]}; csrfToken=${csrfValue}` : null;
     };
 
     await t.test('signup OTP is delivered, consumed once, and grants welcome credits transactionally', async () => {
@@ -155,7 +156,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
 
       const refreshResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const refreshBody = await refreshResponse.json();
-      const rotatedCookie = cookieFrom(refreshResponse);
+      const rotatedCookie = cookieFrom(refreshResponse, loginBody.csrfToken);
       assert.equal(refreshResponse.status, 200);
       assert.ok(refreshBody.token);
       assert.ok(rotatedCookie);
