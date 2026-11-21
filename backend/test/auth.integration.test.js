@@ -126,7 +126,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.ok(rotatedCookie);
       assert.notEqual(rotatedCookie, initialCookie);
 
-      const replayResponse = await post('/api/auth/refresh', {}, initialCookie);
+      const replayResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const replayBody = await replayResponse.json();
       assert.equal(replayResponse.status, 401);
       assert.equal(replayBody.code, 'REFRESH_TOKEN_REVOKED');
