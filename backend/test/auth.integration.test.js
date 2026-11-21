@@ -51,6 +51,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     const imported = await import('../server.js');
     server = imported.server;
     if (!server.listening) await once(server, 'listening');
+    await imported.databaseReady;
     await mongoose.connection.asPromise();
 
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
