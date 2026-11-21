@@ -67,7 +67,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     await t.test('signup OTP is delivered, consumed once, and grants welcome credits transactionally', async () => {
       const sendResponse = await post('/api/auth/send-otp', { email, name: 'Auth Integration', purpose: 'signup' });
       const sendBody = await sendResponse.json();
-      assert.equal(sendResponse.status, 200);
+      assert.equal(sendResponse.status, 202);
       assert.equal(sendBody.emailSent, true);
 
       const otpMatch = deliveredHtml.match(/>(\d{6})<\/div>/);
@@ -89,6 +89,12 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(user.credits, 50);
       assert.equal(await CreditTransaction.countDocuments({ userId: user._id, source: 'signup', amount: 50 }), 1);
       assert.equal(await Otp.countDocuments({ email, purpose: 'signup' }), 0);
+
+      const existingSignup = await post('/api/auth/send-otp', { email, purpose: 'signup' });
+      const unknownReset = await post('/api/auth/send-otp', { email: `unknown-${new mongoose.Types.ObjectId()}@example.test`, purpose: 'reset' });
+      assert.equal(existingSignup.status, 202);
+      assert.equal(unknownReset.status, 202);
+      assert.deepEqual(await existingSignup.json(), await unknownReset.json());
 
       const replayResponse = await post('/api/auth/register', {
         name: 'Auth Integration',
@@ -132,12 +138,19 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       const afterLogoutBody = await afterLogoutResponse.json();
       assert.equal(afterLogoutResponse.status, 401);
       assert.equal(afterLogoutBody.code, 'REFRESH_TOKEN_REVOKED');
+
+      const revokedAccess = await originalFetch(`${baseUrl}/api/content/transactions`, {
+        headers: { Authorization: `Bearer ${loginBody.token}` }
+      });
+      const revokedAccessBody = await revokedAccess.json();
+      assert.equal(revokedAccess.status, 401);
+      assert.equal(revokedAccessBody.code, 'AUTH_REVOKED');
     });
 
     await t.test('five invalid OTP attempts lock the verification record', async () => {
       const lockEmail = `auth-lock-${new mongoose.Types.ObjectId()}@example.test`;
       const sendResponse = await post('/api/auth/send-otp', { email: lockEmail, purpose: 'signup' });
-      assert.equal(sendResponse.status, 200);
+      assert.equal(sendResponse.status, 202);
 
       for (let attempt = 1; attempt <= 5; attempt += 1) {
         const invalidResponse = await post('/api/auth/register', {
