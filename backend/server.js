@@ -15,6 +15,7 @@ import contentRoutes from './routes/content.js';
 import adminRoutes from './routes/admin.js';
 import { optionalAuth } from './utils/auth.js';
 import { applyCreditChange, reconcilePendingGenerationReservations, refundGenerationReservation } from './utils/credits.js';
+import MongoRateLimitStore from './utils/MongoRateLimitStore.js';
 import { ApiError, asyncHandler, errorHandler, validateRequest } from './utils/http.js';
 
 dotenv.config();
@@ -126,6 +127,7 @@ let workingModel;
 const generationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
+  store: new MongoRateLimitStore({ prefix: 'generation:' }),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.userId
