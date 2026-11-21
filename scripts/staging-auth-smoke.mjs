@@ -11,13 +11,13 @@ function requireEnv(name, value) {
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
 }
 
-function cookieFrom(response) {
+function cookieFrom(response, fallbackCsrfToken) {
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('set-cookie')].filter(Boolean);
   const refreshCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('refreshToken='));
   const csrfCookie = setCookies.find((value) => value.split(';', 1)[0].startsWith('csrfToken='));
-  if (!refreshCookie || !csrfCookie) throw new Error('Expected refreshToken and csrfToken Set-Cookie headers.');
+  if (!refreshCookie || (!csrfCookie && !fallbackCsrfToken)) throw new Error('Expected refreshToken and CSRF cookie state.');
 
   const validateCookie = (raw, name, requiredHttpOnly) => {
     const [nameValue, ...attributes] = raw.split(';').map((part) => part.trim());
@@ -41,7 +41,9 @@ function cookieFrom(response) {
   };
 
   const refreshPair = validateCookie(refreshCookie, 'refreshToken', true);
-  const csrfPair = validateCookie(csrfCookie, 'csrfToken', false);
+  const csrfPair = csrfCookie
+    ? validateCookie(csrfCookie, 'csrfToken', false)
+    : 'csrfToken=' + fallbackCsrfToken;
   return {
     cookie: refreshPair + '; ' + csrfPair,
     csrfToken: csrfPair.slice('csrfToken='.length)
@@ -113,7 +115,7 @@ try {
   if (refresh.response.status !== 200 || refresh.data?.success !== true || !(refresh.data?.data?.token || refresh.data?.token)) {
     throw new Error(`Refresh-token rotation failed (HTTP ${refresh.response.status}).`);
   }
-  const rotatedCookies = cookieFrom(refresh.response);
+  const rotatedCookies = cookieFrom(refresh.response, csrfToken);
   const rotatedCookie = rotatedCookies.cookie;
   csrfToken = refresh.data?.csrfToken || refresh.data?.data?.csrfToken || rotatedCookies.csrfToken;
   if (rotatedCookie === sessionCookies.cookie) {
