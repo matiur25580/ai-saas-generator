@@ -60,6 +60,10 @@ app.use(morgan((tokens, req, res) => JSON.stringify({
 })));
 app.use(express.json({ limit: '20kb' }));
 app.use(cookieParser());
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health' || mongoose.connection.readyState === 1) return next();
+  return res.status(503).json({ success: false, error: 'Database is unavailable.', code: 'DATABASE_UNAVAILABLE' });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/admin', adminRoutes);
