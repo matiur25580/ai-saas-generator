@@ -146,7 +146,7 @@ The command transactionally creates the administrator (or promotes the matching 
 | `GET` | `/api/admin/stats` | Admin-only user and generation statistics. |
 | `POST` | `/api/admin/add-credits` | Admin-only manual credit grant. Requires `{ email, credits }`, where credits is an integer from 1 to 100000. |
 
-OTP requests are limited to 3 per email and 30 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. All limits use atomic MongoDB-backed counters with TTL cleanup, shared across backend instances.
+OTP requests are limited to 3 per email and 30 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. All limits use atomic MongoDB-backed counters with TTL cleanup, shared across backend instances. IP and email identifiers are SHA-256 hashed before storage.
 
 ## Staging Authentication Smoke Test
 
