@@ -20,6 +20,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
   };
   const secret = 'auth-integration-test-secret-with-sufficient-entropy';
   const email = `auth-success-${new mongoose.Types.ObjectId()}@example.test`;
+  let activePassword = 'A-strong-test-password-123';
   let deliveredHtml = '';
   const deliveredOtps = new Map();
 
@@ -112,8 +113,34 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.equal(replayResponse.status, 400);
     });
 
+    await t.test('password reset consumes OTP transactionally and revokes existing access tokens', async () => {
+      const oldLogin = await post('/api/auth/login', { email, password: activePassword });
+      const oldLoginBody = await oldLogin.json();
+      assert.equal(oldLogin.status, 200);
+
+      const resetSend = await post('/api/auth/send-otp', { email, purpose: 'reset' });
+      assert.equal(resetSend.status, 202);
+      const resetOtp = deliveredOtps.get(email);
+      assert.match(resetOtp || '', /^\\d{6}$/);
+
+      const resetResponse = await post('/api/auth/reset-password', {
+        email, otp: resetOtp, newPassword: 'A-new-strong-test-password-456'
+      });
+      assert.equal(resetResponse.status, 200);
+
+      const oldAccess = await originalFetch(`${baseUrl}/api/content/transactions`, {
+        headers: { Authorization: `Bearer ${oldLoginBody.token}` }
+      });
+      assert.equal(oldAccess.status, 401);
+      assert.equal((await oldAccess.json()).code, 'AUTH_REVOKED');
+
+      const oldPasswordLogin = await post('/api/auth/login', { email, password: activePassword });
+      assert.equal(oldPasswordLogin.status, 401);
+      activePassword = 'A-new-strong-test-password-456';
+    });
+
     await t.test('login issues an HttpOnly refresh cookie and refresh tokens are single-use', async () => {
-      const loginResponse = await post('/api/auth/login', { email, password: 'A-strong-test-password-123' });
+      const loginResponse = await post('/api/auth/login', { email, password: activePassword });
       const loginBody = await loginResponse.json();
       const initialCookie = cookieFrom(loginResponse);
 
