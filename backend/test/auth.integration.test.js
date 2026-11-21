@@ -21,6 +21,7 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
   const secret = 'auth-integration-test-secret-with-sufficient-entropy';
   const email = `auth-success-${new mongoose.Types.ObjectId()}@example.test`;
   let deliveredHtml = '';
+  const deliveredOtps = new Map();
 
   process.env.NODE_ENV = 'test';
   process.env.MONGO_URI = mongoUri;
@@ -33,7 +34,10 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
     const url = new URL(typeof input === 'string' ? input : input.url);
     if (url.hostname === 'api.brevo.com') {
       const payload = JSON.parse(init.body);
-      if (payload.to[0].email === email) deliveredHtml = payload.htmlContent;
+      const deliveredEmail = payload.to[0].email.toLowerCase();
+      const deliveredMatch = payload.htmlContent.match(/>(\\d{6})<\\/div>/);
+      if (deliveredMatch) deliveredOtps.set(deliveredEmail, deliveredMatch[1]);
+      if (deliveredEmail === email) deliveredHtml = payload.htmlContent;
       return new Response(JSON.stringify({ messageId: 'integration-test-message' }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' }
@@ -118,6 +122,9 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       assert.ok(initialCookie);
       assert.match(loginResponse.headers.get('set-cookie'), /HttpOnly/i);
 
+      const csrfRejected = await post('/api/auth/refresh', {}, initialCookie);
+      assert.equal(csrfRejected.status, 403);
+
       const refreshResponse = await post('/api/auth/refresh', {}, initialCookie, loginBody.csrfToken);
       const refreshBody = await refreshResponse.json();
       const rotatedCookie = cookieFrom(refreshResponse);
@@ -153,13 +160,15 @@ test('auth API verifies OTP, creates accounts, and rotates refresh sessions safe
       const lockEmail = `auth-lock-${new mongoose.Types.ObjectId()}@example.test`;
       const sendResponse = await post('/api/auth/send-otp', { email: lockEmail, purpose: 'signup' });
       assert.equal(sendResponse.status, 202);
+      const correctOtp = deliveredOtps.get(lockEmail);
+      const wrongOtp = correctOtp === '999999' ? '000000' : '999999';
 
       for (let attempt = 1; attempt <= 5; attempt += 1) {
         const invalidResponse = await post('/api/auth/register', {
           name: 'OTP Lock Test',
           email: lockEmail,
           password: 'A-strong-test-password-123',
-          otp: '000000'
+          otp: wrongOtp
         });
         assert.equal(invalidResponse.status, attempt === 5 ? 429 : 400);
       }
