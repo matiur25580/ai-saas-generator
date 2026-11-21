@@ -23,10 +23,8 @@ export async function refreshSession() {
         credentials: 'include'
       });
       const csrfData = await csrfResponse.json().catch(() => ({}));
-      if (!csrfResponse.ok || !csrfData.csrfToken) {
-        clearAccessToken();
-        return null;
-      }
+      if (!csrfResponse.ok) throw new Error('The authentication service is temporarily unavailable.');
+      if (!csrfData.csrfToken) throw new Error('The server returned an invalid CSRF session.');
       setCsrfToken(csrfData.csrfToken);
 
       const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
