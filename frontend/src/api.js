@@ -16,6 +16,7 @@ export function clearAccessToken() {
   csrfToken = null;
 }
 
+// Share one in-flight refresh across concurrent API calls to avoid racing session renewals.
 export async function refreshSession() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
