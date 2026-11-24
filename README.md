@@ -1,172 +1,373 @@
+<div align="center">
+
 # Draftline — AI Writing Studio
 
-Draftline is a React and Express writing workspace that sends real content requests to Google Gemini, verifies accounts through Brevo email, and stores signed-in history and credit events in MongoDB.
+**A full-stack AI writing workspace with Gemini-powered generation, secure accounts, and a transactional credit system.**
 
-![React](https://img.shields.io/badge/React-18-149eca) ![Vite](https://img.shields.io/badge/Vite-8-646cff) ![Express](https://img.shields.io/badge/Express-4-555) ![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47a248) ![AI](https://img.shields.io/badge/AI-Gemini-4285f4)
+[![CI](https://github.com/matiur25580/ai-saas-generator/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matiur25580/ai-saas-generator/actions/workflows/ci.yml)
+![React](https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4-555?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47a248?logo=mongodb&logoColor=white)
+![Gemini](https://img.shields.io/badge/AI-Gemini-4285f4?logo=google&logoColor=white)
 
-## Live Links
+[**Open the app**](https://ai-saas-generator.vercel.app) · [**API health**](https://ai-saas-generator-d3g8.onrender.com/api/health) · [**Screenshot guide**](docs/screenshots/README.md)
 
-- Frontend: [https://ai-saas-generator.vercel.app](https://ai-saas-generator.vercel.app)
-- Backend: [https://ai-saas-generator-d3g8.onrender.com](https://ai-saas-generator-d3g8.onrender.com) (API health: [/api/health](https://ai-saas-generator-d3g8.onrender.com/api/health))
+</div>
 
-## Screenshots
+---
 
-A genuine screenshot gallery is being prepared. The capture checklist and safe-data rules are in [docs/screenshots/README.md](docs/screenshots/README.md). The earlier screenshot filenames were placeholders only; they have been removed so the README does not display broken image links. Capture the live landing page and authenticated workspace before adding images.
+## Product overview
 
-## ✨ Features
-- 🔐 JWT Auth + 6-digit OTP verification
-- 🤖 Live Gemini text generation with format, persona, tone, length, and temperature controls
-- 🔐 HMAC-protected, Brevo-delivered signup/reset OTP, enumeration-resistant responses, lockout, MongoDB-shared rate limits, and rotating HttpOnly refresh cookies
-- 🛡️ Database-checked access-token versions; logout, password reset, and account deactivation revoke existing access sessions immediately
-- 🔒 Access tokens stay in frontend memory; refresh/logout require a CSRF token and the refresh cookie is HttpOnly
-- 📚 Account-backed generation history, search, pagination, bookmarks, and delete
-- 💳 Transactional credit ledger for starter-credit grants, generation debits, and admin grants
-- 📄 Copy, Markdown/text download, and safe browser print-to-PDF
-- 🌗 Light/dark workspace and responsive landing, auth, studio, and admin screens
-- 🛡️ Helmet, allowlisted CORS, validation, structured errors, request logs, and health status
+Draftline is a React and Express writing studio that turns user prompts into formatted content with the Google Gemini API. It combines a configurable writing experience with account verification, saved content, bookmarks, and a credit ledger.
 
-Paid plans, checkout, customer testimonials, and public analytics are not implemented or advertised.
+The application supports two modes of use:
+- **Guest workspace:** generate content and keep guest history in the browser.
+- **Signed-in workspace:** manage account-backed generation history, bookmarks, credit balance, and transaction records.
 
-## 🛠️ Tech Stack
-**Frontend:** React 18, Vite 8, Lucide, DM Sans, Space Grotesk
-**Backend:** Node.js, Express 4, Mongoose, JWT, Brevo HTTP API
-**Database:** MongoDB Atlas
-**AI:** Google Gemini REST API
-**Deploy:** Vercel + Render
+For account workflows, Draftline uses Brevo to deliver one-time passcodes (OTPs). MongoDB stores user, content, OTP, and credit data.
 
-## ⚙️ Setup
+> **Project status:** Draftline is an actively developed portfolio application with a deployed frontend and API. Core generation, account, content, and credit workflows are implemented. Real Gemini, Brevo, and MongoDB behavior depends on correctly configured external services. The public demo is not a production writing service; use synthetic test data only. Paid plans, checkout, customer testimonials, and public analytics are not implemented.
 
-Requirements: Node.js 20.19+ and MongoDB Atlas (replica set/transaction support).
+## What you can do
 
-```bash
-git clone https://github.com/matiur25580/ai-saas-generator.git
-cd ai-saas-generator
-npm --prefix backend ci
-npm --prefix frontend ci
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
+### Write with AI
+- Generate text through the Gemini REST API.
+- Choose content format, persona, tone, output length, and temperature.
+- Handle provider/model failures with explicit unavailable responses rather than fabricated placeholder output.
+- Copy generated content, download Markdown or text, and use browser print-to-PDF.
 
-Set valid development values in `backend/.env` and `frontend/.env`, then run each service in a separate terminal:
+### Manage an account and content
+- Register and verify an account with a six-digit email OTP.
+- Sign in, recover a password, and sign out.
+- Browse searchable, paginated generation history.
+- Bookmark, edit, and delete saved content.
+- Review account credits and a transaction history.
 
-```bash
-cd backend && npm start
-```
+### Operate the credit workflow
+- Grant starter credits and support admin-issued credit grants.
+- Reserve a credit before an authenticated generation request.
+- Settle the reservation with saved output on success.
+- Refund failed generation or persistence attempts transactionally.
+- Reconcile stale reservations after an interrupted process, with bounded retry batches and duplicate-refund protection.
 
-```bash
-cd frontend && npm run dev
-```
+### Use a responsive workspace
+- Responsive landing, authentication, studio, and admin screens.
+- Light and dark workspace themes.
+- Clear request feedback and structured API errors.
 
-The frontend is served at `http://localhost:5173`; the API listens on `http://localhost:5000`.
+## Engineering highlights
+
+The project focuses on correctness at security- and money-adjacent boundaries:
+
+- **Session lifecycle:** short-lived access tokens remain in frontend memory; rotating refresh tokens are held in HttpOnly cookies.
+- **CSRF protection:** browser refresh and logout flows require a CSRF token.
+- **Session revocation:** database-checked token versions allow logout, password reset, and account deactivation to invalidate existing access sessions.
+- **OTP safeguards:** HMAC-protected OTP handling, hashed storage, expiry, attempt lockout, enumeration-resistant responses, and MongoDB-shared rate limits.
+- **Atomic credit accounting:** balance updates and ledger entries are committed in MongoDB transactions.
+- **Generation recovery:** pending reservations older than 30 minutes are scanned every minute; each pass is bounded to 100 reservations and failed refunds can be retried.
+- **API hardening:** Helmet, allowlisted CORS, request validation, structured errors, request logging, and health/readiness status.
+
+AI matching and generated text are decision-support or drafting aids. Users remain responsible for reviewing output before relying on it.
+
+## Technology
+
+| Layer | Stack |
+|---|---|
+| Frontend | React 18, Vite 8, JavaScript |
+| UI | Lucide React, DM Sans, Space Grotesk |
+| Backend | Node.js, Express 4 |
+| Data | MongoDB Atlas, Mongoose |
+| Authentication | JWT, HttpOnly refresh cookies, CSRF token |
+| Email | Brevo HTTP API |
+| AI | Google Gemini REST API |
+| Hosting | Vercel (frontend), Render (API) |
+| Automation and tests | GitHub Actions, Node test runner, MongoDB replica-set integration tests |
 
 ## Architecture
 
 ```text
-Browser (React + Vite)
-	├── JSON API + HttpOnly refresh cookie ──> Express API (Render)
-	│     ├── JWT access/refresh sessions
-	│     ├── Gemini REST API (text generation)
-	│     ├── Brevo HTTP API (OTP email)
-	│     └── MongoDB Atlas (users, content, OTPs, credit ledger)
-	└── Static frontend assets (Vercel)
+Browser
+  |
+  +-- React + Vite (Vercel)
+  |     +-- UI state and guest history
+  |     +-- In-memory access token
+  |     +-- HttpOnly refresh cookie + CSRF header
+  |
+  +-- JSON API requests
+        |
+        v
+      Express API (Render)
+        +-- Authentication and session controls
+        +-- Generation and credit reservation
+        +-- Content history and admin routes
+        +-- Google Gemini REST API
+        +-- Brevo HTTP API (OTP email)
+        +-- MongoDB Atlas
+              +-- Users and sessions
+              +-- OTP state
+              +-- Saved content
+              +-- Credit balances and ledger
+              +-- Rate-limit counters
 ```
 
-Frontend state and guest history stay in the browser. Signed-in content, account balances, OTP state, and credit transactions are persisted in MongoDB. Authenticated generation reserves one credit before calling Gemini, preventing concurrent requests from spending the same remaining balance. Successful output and reservation settlement are committed with the saved content in one transaction; failed provider or persistence attempts trigger a transactional credit refund. Reservations left pending by an abrupt process termination are automatically scanned every minute after MongoDB connects and refunded when older than 30 minutes. Refunds are conditional and transactional, so completed or already-refunded reservations are not credited twice. The reconciliation scan is bounded to 100 reservations per pass; failed records are retried on a later pass.
+Guest history stays in the browser. Signed-in content, balances, OTP state, and credit transactions are persisted in MongoDB.
 
-## Production Environment
+For authenticated generation, the API reserves one credit before calling Gemini. A successful provider response and its saved content settle the reservation transactionally. Provider or persistence failures trigger a transactional refund. A periodic reconciliation scan recovers stale reservations left by abrupt process termination.
 
-Set these variables in the backend deployment. Production startup fails fast if a required service configuration is absent:
+## Repository layout
 
-- `MONGO_URI`: MongoDB Atlas connection string. Atlas must support replica-set transactions for credit changes.
-- `JWT_SECRET`: long, random secret used to sign access and refresh tokens.
-- `GEMINI_API_KEY`: Google AI API key. The server sends it in the `x-goog-api-key` header, prioritizes `gemini-3.8-flash` when listed, and limits each generation to three text-capable Flash model attempts (30 seconds per attempt).
-- `BREVO_API_KEY` and `BREVO_SENDER_EMAIL`: Brevo API key and a verified sender address. These are required for signup/reset OTP delivery but optional for backend startup. OTP endpoints intentionally return the same generic `202` response for eligible and ineligible accounts; delivery errors are logged without exposing account existence. Gmail SMTP is not used.
-- `FRONTEND_URL`: the exact HTTPS frontend origin. If omitted in production, the server uses `https://ai-saas-generator.vercel.app` as its default allowlisted origin. Set this variable when using a custom frontend domain. CORS does not accept wildcard origins.
-- `TRUST_PROXY_HOPS`: trusted reverse-proxy depth used to derive client IPs for shared rate limits. Defaults to `1` in production and `0` elsewhere; set it to match the hosting proxy topology.
-- `NODE_ENV=production` and `PORT` as supplied by the host.
+```text
+.
+├── frontend/
+│   ├── src/
+│   └── package.json
+├── backend/
+│   ├── models/
+│   ├── routes/
+│   ├── utils/
+│   ├── scripts/
+│   └── package.json
+├── docs/
+│   └── screenshots/
+└── .github/
+    └── workflows/
+        └── ci.yml
+```
 
-Set `VITE_BACKEND_URL` in the frontend deployment to the backend origin. A production build emits a warning when this value is missing. When using a custom frontend domain, `FRONTEND_URL` must exactly match the deployed frontend origin.
+## Run locally
 
-### OTP TTL Index Migration
+### Requirements
 
-OTP documents use `expiresAt` so an incorrect-code lock remains in the database for the full ten minutes. Before deploying this schema change to a database that already has the old TTL index, remove it once in MongoDB:
+- Node.js 20.19 or newer
+- npm
+- MongoDB with replica-set transaction support (MongoDB Atlas or a local replica set)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/matiur25580/ai-saas-generator.git
+cd ai-saas-generator
+
+npm --prefix backend ci
+npm --prefix frontend ci --legacy-peer-deps
+```
+
+The frontend install uses `--legacy-peer-deps`, matching the repository's CI workflow.
+
+### 2. Configure environment
+
+Create the local environment files:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Set values in `backend/.env`:
+
+```dotenv
+PORT=5000
+NODE_ENV=development
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=replace_with_a_long_random_secret
+GEMINI_API_KEY=your_gemini_api_key
+FRONTEND_URL=http://localhost:5173
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=verified_sender@example.com
+TRUST_PROXY_HOPS=0
+```
+
+Set the frontend API origin in `frontend/.env`:
+
+```dotenv
+VITE_BACKEND_URL=http://localhost:5000
+```
+
+Gemini credentials are needed for live generation. Brevo credentials are needed for signup and password-reset email delivery. Never commit real secrets or put backend credentials in frontend environment variables.
+
+### 3. Start the services
+
+Run the backend in one terminal:
+
+```bash
+cd backend
+npm start
+```
+
+Run the frontend in another terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). The API listens on [http://localhost:5000](http://localhost:5000); its health endpoint is [http://localhost:5000/api/health](http://localhost:5000/api/health).
+
+## Production configuration
+
+Configure these values in the backend hosting environment:
+
+| Variable | Purpose |
+|---|---|
+| `MONGO_URI` | MongoDB Atlas connection string; replica-set transactions are required for credit operations |
+| `JWT_SECRET` | Long, random signing secret for access and refresh tokens |
+| `GEMINI_API_KEY` | Google AI API key, sent in the `x-goog-api-key` header |
+| `BREVO_API_KEY` | Brevo API key for OTP delivery |
+| `BREVO_SENDER_EMAIL` | Verified Brevo sender address |
+| `FRONTEND_URL` | Exact HTTPS frontend origin allowed by CORS |
+| `TRUST_PROXY_HOPS` | Trusted reverse-proxy depth for client IP derivation |
+| `NODE_ENV` | Set to `production` in production |
+| `PORT` | Supplied by the hosting platform |
+
+Brevo configuration is required for OTP delivery but is optional for backend startup. The backend uses Brevo's HTTP API; Gmail SMTP is not used.
+
+Set `VITE_BACKEND_URL` in the Vercel frontend environment to the backend origin. If using a custom frontend domain, set `FRONTEND_URL` to that exact origin. Wildcard CORS origins are not accepted.
+
+The server prioritizes `gemini-3.8-flash` when available and limits each generation to three text-capable Flash model attempts, with a 30-second timeout per attempt.
+
+### Existing database: OTP TTL index migration
+
+If deploying to a database that still has the previous OTP TTL index, apply this one-time migration:
 
 ```javascript
 db.otps.dropIndex('createdAt_1')
 db.otps.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 ```
 
-## API Reference
+OTP documents use `expiresAt` so an incorrect-code lock remains stored for the full ten-minute lock period.
 
-All API responses use a `success` boolean and a `data` payload or structured `error`/`code`. Auth endpoints retain selected top-level fields for compatibility.
+## API overview
+
+All endpoints are mounted under `/api`. Responses include a `success` flag and a `data` payload or structured `error`/`code`.
 
 ### Authentication
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/send-otp` | Send signup/reset OTP. Limited to 3 per email and 30 per IP per 10 minutes. Returns the same generic response for existing and unknown accounts. Requires `{ email, purpose, name? }`. |
-| `POST` | `/api/auth/register` | Verify signup OTP and create account. Requires `{ name, email, password, otp }`; password is 8-128 characters. |
-| `POST` | `/api/auth/login` | Login, limited to 5 attempts per IP per 15 minutes. Returns a 15-minute access token and sets a rotating 7-day HttpOnly refresh cookie. |
-| `GET` | `/api/auth/csrf` | Issue or retrieve the CSRF token used by browser sessions. Send cookies with credentials enabled. |
-| `POST` | `/api/auth/refresh` | Rotate the refresh cookie and return a new access token. Requires the `X-CSRF-Token` header and cookies with credentials enabled. |
-| `POST` | `/api/auth/logout` | Increment the account token version to revoke all access tokens, clear the refresh/CSRF cookies, and require `X-CSRF-Token`. |
-| `POST` | `/api/auth/reset-password` | Verify reset OTP and set a new password in a transaction; revokes all existing access and refresh sessions. Requires `{ email, otp, newPassword }`. |
-| `GET` | `/api/health` | Readiness check; returns 503 with `DATABASE_UNAVAILABLE` until MongoDB connects. |
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/auth/send-otp` | Send signup or reset OTP |
+| POST | `/auth/register` | Verify signup OTP and create account |
+| POST | `/auth/login` | Sign in and issue access/refresh session |
+| GET | `/auth/csrf` | Issue or retrieve browser CSRF token |
+| POST | `/auth/refresh` | Rotate refresh cookie and issue access token |
+| POST | `/auth/logout` | Revoke sessions and clear cookies |
+| POST | `/auth/reset-password` | Reset password and revoke existing sessions |
+| GET | `/health` | API/database readiness |
 
-Five incorrect OTP submissions lock that OTP for ten minutes. OTPs expire after three minutes.
+OTP values expire after three minutes; five incorrect submissions lock an OTP for ten minutes. OTP sending is limited to three requests per email and 30 per IP per ten minutes. The endpoint returns the same generic `202` response for eligible and ineligible accounts.
 
-### Generation, Content, and Credits
+### Content, generation, and credits
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/generate` | Generate text. Accepts `{ prompt, persona?, aiTone?, contentType?, outputLength?, temperature? }`; returns `AI_UNAVAILABLE` instead of placeholder output if all models fail. Signed-in generations reserve one credit before provider calls. Successful generations settle the reservation with the saved content; failed attempts refund it transactionally. |
-| `POST` | `/api/content` | Authenticated content save and one-credit debit. Requires `{ prompt, response, persona?, tone?, bookmarked? }`. |
-| `GET` | `/api/content?page=1&search=...` | Authenticated, paginated content history. |
-| `PUT` | `/api/content/:id` | Update the caller's content record. |
-| `DELETE` | `/api/content/:id` | Delete the caller's content record. |
-| `GET` | `/api/content/transactions?page=1` | Authenticated credit ledger, newest first. Positive amounts are grants; negative amounts are debits. |
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/generate` | Generate text; signed-in requests reserve a credit |
+| POST | `/content` | Save authenticated content and debit one credit |
+| GET | `/content?page=1&search=...` | Search and paginate saved history |
+| PUT | `/content/:id` | Update the caller's content |
+| DELETE | `/content/:id` | Delete the caller's content |
+| GET | `/content/transactions?page=1` | Read the credit ledger |
 
-Authenticated routes require `Authorization: Bearer <access-token>`. The frontend keeps access tokens in memory rather than local storage; the HttpOnly refresh cookie is rotated with a CSRF-protected request. Every protected request reloads the current account and checks its active state and token version. Credit balance changes and their ledger records are committed in one MongoDB transaction. AI generation reserves a credit before provider execution, then marks the reservation completed with the saved content or records a refund if the attempt fails. An abrupt process termination can leave a reservation pending; the backend automatically scans for reservations older than 30 minutes every minute and retries failed refunds. Each scan processes at most 100 records.
+Protected routes use `Authorization: Bearer <access-token>`. The frontend keeps access tokens in memory, not local storage. Refresh cookies are HttpOnly and rotated with a CSRF-protected request.
 
-### One-time administrator bootstrap
+### Admin
 
-Public registration always creates a `User`; clients cannot request the `Admin` role. To create the initial administrator, configure `MONGO_URI`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (16-128 characters), and optional `ADMIN_NAME` in the backend environment, then run once from the repository root:
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/admin/stats` | Read admin-only user and generation statistics |
+| POST | `/admin/add-credits` | Grant credits to an account |
+
+Public registration always creates a standard user; clients cannot request an administrator role. Bootstrap the initial administrator once from the backend directory:
 
 ```bash
 cd backend
 node scripts/bootstrap-admin.js
 ```
 
-The command transactionally creates the administrator (or promotes the matching existing account), revokes any prior sessions, records the initial credit grant when creating a new account, and writes a unique one-time bootstrap marker. A second run is rejected. Keep the admin password in a secret manager; never place it in frontend variables or commit it.
+Configure `MONGO_URI`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` (16–128 characters), with optional `ADMIN_NAME`, in the backend environment first. The bootstrap command uses a one-time marker and rejects a second run. Keep the admin password in a secret manager.
 
-### Admin
+## Tests and CI
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/admin/stats` | Admin-only user and generation statistics. |
-| `POST` | `/api/admin/add-credits` | Admin-only manual credit grant. Requires `{ email, credits }`, where credits is an integer from 1 to 100000. |
-
-OTP requests are limited to 3 per email and 30 per IP per 10 minutes; generation is limited to 20 requests per account or guest IP per 15 minutes. Login is limited to 5 attempts per IP per 15 minutes. All limits use atomic MongoDB-backed counters with TTL cleanup, shared across backend instances. IP and email identifiers are SHA-256 hashed before storage.
-
-## Staging Authentication Smoke Test
-
-A manual GitHub Actions workflow checks the deployed **staging** API without creating users, sending OTP email, or calling Gemini. It verifies API readiness, login, HttpOnly refresh-cookie issuance, refresh-token rotation, logout, and rejection of the revoked refresh token.
-
-1. Deploy this repository to a separate staging backend connected to a non-production MongoDB database. Do not point this workflow at the production API.
-2. Create a disposable test account in staging using the normal signup/OTP flow.
-3. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add:
-   - `STAGING_API_BASE_URL`: the HTTPS base URL of the staging backend.
-   - `STAGING_TEST_EMAIL`: the disposable staging account email.
-   - `STAGING_TEST_PASSWORD`: that account's password.
-4. Open **Actions → Staging Authentication Smoke Test → Run workflow**.
-
-The script explicitly refuses the production Render API hostname. It never prints the test email, password, access token, or refresh cookie. Run this only against a dedicated staging account; the workflow logs that account out and verifies that its rotated refresh token is revoked.
-
-## Verification
+Run the available checks:
 
 ```bash
-cd frontend && VITE_BACKEND_URL=http://localhost:5000 npm run build
-cd ../backend && npm test && npm audit && npm start
+# Frontend production build
+cd frontend
+VITE_BACKEND_URL=http://localhost:5000 npm run build
+
+# Backend tests and dependency audit
+cd ../backend
+npm test
+npm audit
+node --check server.js
 ```
 
-The backend test suite includes HTTP error-contract and refresh-token rotation tests, token-version revocation, OTP enumeration/lockout and transactional signup/reset, MongoDB-shared rate-limit concurrency, generation-reservation unit tests, MongoDB replica-set integration tests for atomic reservation/refund, duplicate-refund idempotency, concurrent last-credit spending and stale-reservation recovery, plus API end-to-end tests for authenticated success, provider-failure refunds, insufficient-credit rejection, guest generation, API-key header handling and bounded three-model failover. GitHub Actions provisions a MongoDB 7 replica set and runs the full suite. When running locally without `MONGODB_TEST_URI`, database-backed integration and end-to-end tests are skipped. The repository does not include credentials for Brevo, Gemini, or MongoDB. Live signup/reset email, model generation, and transaction flows must be verified against configured services before presenting a deployed demo.
+The GitHub Actions workflow:
+- Installs frontend and backend dependencies.
+- Builds the frontend.
+- Checks backend JavaScript syntax.
+- Starts MongoDB 7 as a replica set.
+- Runs the backend test suite against the replica set.
+- Reports dependency advisories.
+
+Backend tests cover authentication and refresh rotation, token-version revocation, OTP lockout and enumeration behavior, shared rate-limit concurrency, credit reservation/refund logic, duplicate-refund protection, concurrent last-credit spending, stale-reservation recovery, API error contracts, and Gemini model failover. Database-backed integration and end-to-end tests are skipped locally when `MONGODB_TEST_URI` is not configured. CI supplies a MongoDB replica-set test URI.
+
+A separate manually dispatched **Staging Authentication Smoke Test** checks readiness, login, refresh-cookie issuance and rotation, logout, and revoked-token rejection. It must target a dedicated staging deployment and test account; the workflow refuses the production Render API hostname. It does not create users, send OTP emails, or call Gemini.
+
+Passing CI verifies only the checks automated in that workflow. It does not prove that live Brevo email delivery, Gemini generation, or production deployment configuration is working.
+
+## Security and operational notes
+
+- Passwords are hashed; access and refresh tokens are signed with the backend secret.
+- Refresh cookies are HttpOnly; browser refresh/logout requests include a CSRF token.
+- Each protected request checks the current account state and token version.
+- Logout, password reset, and account deactivation invalidate existing access sessions.
+- OTP data is stored in hashed/HMAC-protected form with expiry and attempt lockout.
+- Rate limits use atomic MongoDB-backed counters shared across backend instances; stored IP and email identifiers are SHA-256 hashed.
+- CORS uses explicit allowed origins, and the backend uses Helmet, validation, structured errors, and request logs.
+- Credit balances and ledger records are updated transactionally.
+- Resume-like or private user content should never be used as demo data; use synthetic content in screenshots and smoke tests.
+
+## Deployment and live demo
+
+- **Frontend:** [ai-saas-generator.vercel.app](https://ai-saas-generator.vercel.app)
+- **Backend:** [ai-saas-generator-d3g8.onrender.com](https://ai-saas-generator-d3g8.onrender.com)
+- **API health:** [Check backend health](https://ai-saas-generator-d3g8.onrender.com/api/health)
+
+The frontend and API are deployed separately. The app depends on environment variables and external MongoDB, Gemini, and Brevo services; availability of the public URLs alone does not guarantee every integration is configured or operational.
+
+## Screenshots
+
+A real screenshot gallery is not included yet. The [screenshot guide](docs/screenshots/README.md) lists the captures to add:
+
+1. Public landing page.
+2. Signed-in writing studio and generation controls.
+3. Saved content history and credit ledger.
+
+Only add screenshots captured from the running application with synthetic demo data. Do not use mockups or expose names, email addresses, OTPs, tokens, API keys, or private content.
+
+## Learning path
+
+For a focused code walkthrough, follow this order:
+
+1. Frontend entry point, routes, and API client.
+2. Authentication, OTP, refresh-cookie, and CSRF flow.
+3. Express server bootstrap and route handlers.
+4. MongoDB models for users, content, OTPs, and credits.
+5. Generation reservation, settlement, refund, and reconciliation.
+6. Gemini and Brevo integration boundaries.
+7. CI workflow and staging smoke test.
+
+## License
+
+The backend package currently declares `ISC`; check the repository's root-level licensing files before reusing or redistributing the complete project.
+
+---
+
+## Author
+
+**Matiur Rahaman** · Full-Stack Developer
+
+- GitHub: [@matiur25580](https://github.com/matiur25580)
+- Email: [rahamanmatiur397@gmail.com](mailto:rahamanmatiur397@gmail.com)
+
+Built with React, Vite, Node.js, Express, MongoDB, Gemini, and Brevo.
