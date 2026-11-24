@@ -1,3 +1,4 @@
+// Shared recovery routine: find stale reservations and safely attempt refunds in bounded batches.
 export async function reconcileReservations({
   findPending,
   refund,
