@@ -18,6 +18,7 @@ import { applyCreditChange, reconcilePendingGenerationReservations, refundGenera
 import MongoRateLimitStore from './utils/MongoRateLimitStore.js';
 import { ApiError, asyncHandler, errorHandler, validateRequest } from './utils/http.js';
 
+// Server bootstrap: validate deployment settings, install security middleware, then mount API routes.
 dotenv.config();
 
 const app = express();
