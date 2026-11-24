@@ -4,6 +4,7 @@ import CreditTransaction from '../models/CreditTransaction.js';
 import { ApiError } from './http.js';
 import { reconcileReservations } from './generationReservations.js';
 
+// Credit balance and its ledger entry are written in the same MongoDB transaction to keep them consistent.
 export async function applyCreditChange({ userId, amount, reason, source, metadata = {}, session, includeTransaction = false }) {
   const existingUser = await User.findById(userId).session(session);
   if (!existingUser) throw new ApiError(404, 'User not found.', 'USER_NOT_FOUND');
