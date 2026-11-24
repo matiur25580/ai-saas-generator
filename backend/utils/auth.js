@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { ApiError, asyncHandler } from './http.js';
 
+// Verifies an access token and checks the current account state before attaching identity to the request.
 export const requireAuth = asyncHandler(async (req, res, next) => {
   const authorization = req.headers.authorization;
   const [scheme, token] = authorization?.split(' ') || [];
